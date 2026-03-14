@@ -7,8 +7,17 @@ import Home from './pages/home';
 import './App.css';
 
 // Initialize Supabase - Ensure you add these to your .env file
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl) {
+  throw new Error('VITE_SUPABASE_URL is not set. Please configure it in your environment (.env).');
+}
+
+if (!supabaseKey) {
+  throw new Error('VITE_SUPABASE_ANON_KEY is not set. Please configure it in your environment (.env).');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 function App() {
