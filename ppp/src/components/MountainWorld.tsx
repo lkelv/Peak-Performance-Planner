@@ -102,38 +102,55 @@ function makeMountains(generation: number) {
 }
 
 function BackgroundMountains({ generation }: { generation: number }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const opacity  = useRef(0)
+
+  useFrame((_, delta) => {
+    opacity.current = Math.min(opacity.current + delta * 0.6, 1)
+    groupRef.current?.traverse((child) => {
+      const mesh = child as THREE.Mesh
+      if (mesh.isMesh) {
+        const mat = mesh.material as THREE.MeshPhongMaterial
+        mat.transparent = true
+        mat.opacity = opacity.current
+        mat.needsUpdate = true
+      }
+    })
+  })
+
   const { farPeaks, midPeaks, nearPeaks, snowCaps } = makeMountains(generation)
   const tallFar = farPeaks.filter(([,,, h]) => h > 55)
+
   return (
-    <>
+    <group ref={groupRef}>
       {farPeaks.map(([x, z, r, h, color], i) => (
-        <mesh key={`fp${i}`} position={[x, h / 2, z]}>
+        <mesh key={`fp${i}`} position={[x, h / 2 - 8, z]}>
           <coneGeometry args={[r, h, 7]} />
-          <meshPhongMaterial color={color} flatShading />
+          <meshPhongMaterial color={color} flatShading transparent opacity={0} />
         </mesh>
       ))}
 
       {snowCaps.map(([x, z, r, h], i) => (
-        <mesh key={`sc${i}`} position={[x, tallFar[i][3] - h * 0.5, z]}>
+        <mesh key={`sc${i}`} position={[x, tallFar[i][3] - h * 0.5 - 8, z]}>
           <coneGeometry args={[r, h * 2, 7]} />
-          <meshPhongMaterial color={0xeef4ff} flatShading />
+          <meshPhongMaterial color={0xeef4ff} flatShading transparent opacity={0} />
         </mesh>
       ))}
 
       {midPeaks.map(([x, z, r, h, color], i) => (
-        <mesh key={`mp${i}`} position={[x, h / 2, z]}>
+        <mesh key={`mp${i}`} position={[x, h / 2 - 5, z]}>
           <coneGeometry args={[r, h, 7]} />
-          <meshPhongMaterial color={color} flatShading />
+          <meshPhongMaterial color={color} flatShading transparent opacity={0} />
         </mesh>
       ))}
 
       {nearPeaks.map(([x, z, r, h, color], i) => (
-        <mesh key={`np${i}`} position={[x, h / 2, z]}>
+        <mesh key={`np${i}`} position={[x, h / 2 - 3, z]}>
           <coneGeometry args={[r, h, 6]} />
-          <meshPhongMaterial color={color} flatShading />
+          <meshPhongMaterial color={color} flatShading transparent opacity={0} />
         </mesh>
       ))}
-    </>
+    </group>
   )
 }
 
