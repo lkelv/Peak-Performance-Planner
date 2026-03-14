@@ -10,6 +10,7 @@
 import { useRef, useMemo } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
 
 interface Puff {
   pos:     [number, number, number]
