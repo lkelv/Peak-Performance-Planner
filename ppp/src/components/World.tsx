@@ -9,7 +9,6 @@ import {
   WORLD_OFFSET_X, WORLD_OFFSET_Y, WORLD_OFFSET_Z,
   PATH_START_T,
 } from './constants'
-import type { FloorState } from './constants'
 import { Floor } from './Floor'
 import { Avatar } from './Avatar'
 
@@ -22,7 +21,6 @@ interface WorldProps {
 export function World({ onFloorChange }: WorldProps) {
   const worldRef     = useRef<THREE.Group>(null)
   const frameRef     = useRef(0)
-  const lastFloorRef = useRef(0)
   const avatarRef    = useRef<THREE.Group>(null)
 
   // scrolledY stays in [0, FLOOR_HEIGHT) — it resets on each floor transition.
