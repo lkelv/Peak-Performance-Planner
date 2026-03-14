@@ -66,7 +66,7 @@ export const Avatar = forwardRef<THREE.Group, AvatarProps>(
 
     
     return (
-      <group ref={group} position={position} scale={0.3} rotation={[0, Math.PI*0.88, 0]}>
+      <group ref={group} position={position} scale={0.3} rotation={[0, Math.PI*0.87, 0]}>
         <primitive object={scene} />
       </group>
     )

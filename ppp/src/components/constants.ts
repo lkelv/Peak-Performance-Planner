@@ -16,7 +16,7 @@ export const CAM_FOV  = 20
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
-export const AVATAR_POS:   [number, number, number] = [6.7, 1.704, 3.3]
+export const AVATAR_POS:   [number, number, number] = [6.7, 1.724, 3.3]
 export const AVATAR_SCALE: number = 0.4
 
 // ─────────────────────────────────────────────────────────────────
