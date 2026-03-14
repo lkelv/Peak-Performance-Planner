@@ -100,3 +100,45 @@ export const CLOUD_FRAC:           number =  0.82
 // Keep this equal to SECTION_HEIGHT. Do not edit this line.
 // ─────────────────────────────────────────────────────────────────
 export const FLOOR_HEIGHT: number = SECTION_HEIGHT
+
+// ─────────────────────────────────────────────────────────────────
+// HELIX PATH (used by buildTerrainGeo & Floor)
+// HELIX_RADIUS    : radius of the spiral path in world-units.
+// HELIX_TOTAL_ANGLE : total rotation (radians) per floor.
+// PATH_START_T    : starting fraction [0-1] along the path.
+// SEGS            : number of segments along the path.
+// BAND            : cross-section subdivisions.
+// TURNS           : UV tiling repetitions along the V axis.
+// RIBBON_WIDTH_BASE  : ribbon width at the bottom of the floor.
+// RIBBON_WIDTH_TAPER : fraction the ribbon narrows by the top.
+// RIBBON_SLOPE_DROP  : edge-to-edge height difference across ribbon.
+// SCROLL_SPEED    : alias for CLIMB_SPEED (world-units per frame).
+// ─────────────────────────────────────────────────────────────────
+export const HELIX_RADIUS:       number = 10
+export const HELIX_TOTAL_ANGLE:  number = Math.PI * 2
+export const PATH_START_T:       number = 0
+export const SCROLL_SPEED:       number = CLIMB_SPEED
+
+export const SEGS:               number = 200
+export const BAND:               number = 6
+export const TURNS:              number = 1
+export const RIBBON_WIDTH_BASE:  number = 5
+export const RIBBON_WIDTH_TAPER: number = 0.3
+export const RIBBON_SLOPE_DROP:  number = 1.5
+
+export function helixPt(t: number): THREE.Vector3 {
+  const angle = t * HELIX_TOTAL_ANGLE
+  return new THREE.Vector3(
+    Math.cos(angle) * HELIX_RADIUS,
+    t * FLOOR_HEIGHT,
+    Math.sin(angle) * HELIX_RADIUS,
+  )
+}
+
+export function makeCurve(): THREE.CatmullRomCurve3 {
+  const pts: THREE.Vector3[] = []
+  for (let i = 0; i <= SEGS; i++) {
+    pts.push(helixPt(i / SEGS))
+  }
+  return new THREE.CatmullRomCurve3(pts, false)
+}

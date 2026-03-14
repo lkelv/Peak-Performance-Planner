@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { makeCurve, FLOOR_HEIGHT, CLOUD_T } from './constants'
+import { makeCurve, FLOOR_HEIGHT } from './constants'
 import { buildTerrainGeo } from './buildTerrainGeo'
 import { CloudBank } from './CloudBank'
 

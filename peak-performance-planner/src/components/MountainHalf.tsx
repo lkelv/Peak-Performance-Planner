@@ -24,7 +24,7 @@ import {
 } from './constants'
 
 interface MountainSectionProps {
-  groupRef:     React.RefObject<THREE.Group>
+  groupRef:     React.RefObject<THREE.Group | null>
   sectionIndex: number
 }
 
