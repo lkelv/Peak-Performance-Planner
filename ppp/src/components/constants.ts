@@ -36,7 +36,7 @@ export const ROTATION_DIR:   number = -1.0
 // ─────────────────────────────────────────────────────────────────
 const OVERALL_SPEED: number = 0.75 //0.75 is good
 export const CLIMB_SPEED: number = 0.1*OVERALL_SPEED
-export const ROT_SPEED:   number = 0.0942*OVERALL_SPEED
+export const ROT_SPEED:   number = 0.0944*OVERALL_SPEED
 
 // ─────────────────────────────────────────────────────────────────
 // GLB MOUNTAIN SECTION
