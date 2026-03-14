@@ -1,94 +1,136 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import MountainScene from '../components/MountainScene';
 
 interface HomeProps {
-  session: Session;
-  onSignOut: () => void;
+    session: Session;
+    onSignOut: () => void;
+    goalName: string;
+    totalHours: number;
+    startTasks: string[];
+    isPaused: boolean;
+    setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function Home({ session, onSignOut }: HomeProps) {
-  // ── Fix #2: Start in paused (idle) state instead of climbing ──
-  const [isClimbing, setIsClimbing] = useState(false);
+interface Task {
+    id: string;
+    text: string;
+    completed: boolean;
+}
 
-  return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* Full-viewport 3D mountain — the home page IS the mountain */}
-      <MountainScene height={window.innerHeight} isClimbing={isClimbing} />
+const Fireworks = () => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const particles: any[] = [];
+        const colors = ['#f0c060', '#ffffff', '#ff5555', '#64c878', '#5555ff'];
 
-      {/* Minimal HUD overlay — top-left user info */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          background: 'rgba(0,0,0,0.35)',
-          backdropFilter: 'blur(6px)',
-          borderRadius: 10,
-          padding: '6px 14px',
-          color: '#fff',
-          fontSize: 13,
-          fontFamily: 'system-ui, sans-serif',
-          letterSpacing: 0.3,
-        }}
-      >
-        <span style={{ opacity: 0.7 }}>⛰</span>
-        <span style={{ opacity: 0.85 }}>{session.user.email}</span>
-      </div>
+        class Particle {
+            x: number; y: number; color: string; velocity: { x: number; y: number }; alpha: number;
+            constructor(x: number, y: number, color: string) {
+                this.x = x; this.y = y; this.color = color;
+                this.velocity = { x: (Math.random() - 0.5) * 8, y: (Math.random() - 0.5) * 8 };
+                this.alpha = 1;
+            }
+            draw() {
+                if (!ctx) return;
+                ctx.save(); ctx.globalAlpha = this.alpha; ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = this.color; ctx.fill(); ctx.restore();
+            }
+            update() { this.x += this.velocity.x; this.y += this.velocity.y; this.alpha -= 0.01; }
+        }
 
-      {/* Minimal controls — bottom-center */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 28,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          gap: 12,
-          fontFamily: 'system-ui, sans-serif',
-        }}
-      >
-        <button
-          onClick={() => setIsClimbing(c => !c)}
-          style={{
-            padding: '8px 22px',
-            borderRadius: 8,
-            border: 'none',
-            background: isClimbing ? 'rgba(255,255,255,0.18)' : 'rgba(100,200,120,0.7)',
-            backdropFilter: 'blur(8px)',
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            letterSpacing: 0.4,
-            transition: 'background 0.2s',
-          }}
-        >
-          {isClimbing ? '⏸ Pause' : '▶ Climb'}
-        </button>
+        const interval = setInterval(() => {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * (canvas.height * 0.5);
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            for (let i = 0; i < 30; i++) particles.push(new Particle(x, y, color));
+        }, 600);
 
-        <button
-          onClick={onSignOut}
-          style={{
-            padding: '8px 22px',
-            borderRadius: 8,
-            border: 'none',
-            background: 'rgba(200,60,60,0.55)',
-            backdropFilter: 'blur(8px)',
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            letterSpacing: 0.4,
-            transition: 'background 0.2s',
-          }}
-        >
-          Sign Out
-        </button>
-      </div>
-    </div>
-  );
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach((p, i) => { if (p.alpha <= 0) particles.splice(i, 1); else { p.update(); p.draw(); } });
+            requestAnimationFrame(animate);
+        };
+        animate();
+        return () => clearInterval(interval);
+    }, []);
+    return <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 100 }} />;
+};
+
+export default function Home({ session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused }: HomeProps) {
+    const [timeLeft, setTimeLeft] = useState(totalHours * 3600);
+    const [tasks, setTasks] = useState<Task[]>(() =>
+        startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
+    );
+
+    const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
+    const isFinished = progressPercent === 100 && tasks.length > 0;
+
+    useEffect(() => {
+        // Now using !isPaused to drive the timer
+        if (isPaused || timeLeft <= 0 || isFinished) return;
+        const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+        return () => clearInterval(interval);
+    }, [isPaused, timeLeft, isFinished]);
+
+    const formatTime = (seconds: number) => {
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        return `${hrs > 0 ? hrs + ':' : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const glassStyle: React.CSSProperties = {
+        background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.1)', color: '#fff', position: 'absolute', zIndex: 10,
+    };
+
+    return (
+        <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+            {isFinished && <Fireworks />}
+
+            {/* Progress UI */}
+            <div style={{ ...glassStyle, top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
+                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
+                    <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
+                </div>
+                {isFinished && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer' }}>Descend to Base Camp</button>}
+            </div>
+
+            {/* Timer */}
+            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px' }}>
+                <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
+            </div>
+
+            {/* Tasks */}
+            <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 280, padding: '20px' }}>
+                {tasks.map(task => (
+                    <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
+                        <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} />
+                        <span style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Bottom Controls */}
+            <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
+                {!isFinished && (
+                    <button
+                        onClick={() => setIsPaused(!isPaused)} // This now updates App.tsx state!
+                        style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
+                    >
+                        {!isPaused ? '⏸ Pause' : '▶ Resume'}
+                    </button>
+                )}
+                <button onClick={onSignOut} style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.5)', color: '#fff', cursor: 'pointer' }}>Sign Out</button>
+            </div>
+        </div>
+    );
 }
