@@ -36,13 +36,17 @@ export function MountainSection({ groupRef, sectionIndex }: MountainSectionProps
     cloned.current = scene.clone(true)
   }
 
-  const rotY = SECTION_ROTATION_Y + (sectionIndex % 2) * Math.PI
+  const isOdd = sectionIndex % 2 === 1
+  const rotY  = SECTION_ROTATION_Y + (isOdd ? Math.PI : 0)
+  // Mirror X offset for odd sections: the flat face must meet the
+  // world-space seam after a 180° Y-flip, so negate the X shift.
+  const offX  = isOdd ? -SECTION_OFFSET_X : SECTION_OFFSET_X
 
   return (
     <group ref={groupRef}>
       <primitive
         object={cloned.current}
-        position={[SECTION_OFFSET_X, 0, SECTION_OFFSET_Z]}
+        position={[offX, 3.3, SECTION_OFFSET_Z]}
         rotation={[0, rotY, 0]}
         scale={SECTION_SCALE}
       />

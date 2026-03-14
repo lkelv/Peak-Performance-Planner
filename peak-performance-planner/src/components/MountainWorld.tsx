@@ -1,30 +1,23 @@
 /**
  * MountainWorld.tsx
  *
- * ── Architecture ─────────────────────────────────────────────────
+ * ── Mountain sections ────────────────────────────────────────────
+ *  3 GLB slots in a circular buffer. Each spawns at the top when
+ *  the bottom slot falls off-screen, keeping exactly 3 connected
+ *  halves visible at all times.
  *
- *  THREE physical group refs (ref0, ref1, ref2) are fixed in the JSX.
- *  They never remount. Their Y position is written directly every frame.
+ * ── Background scrolling ────────────────────────────────────────
+ *  bgRef lives OUTSIDE worldRef. Each frame we copy worldRef's
+ *  rotation AND apply the same Y translation so trees/mountains
+ *  scroll at identical speed. bgGeneration key remounts scenery
+ *  after each cloud passage.
  *
- *  A circular "cursor" tracks which ref is bottom/middle/top:
- *    cursor=0  → refs are [bottom=0, middle=1, top=2]
- *    cursor=1  → refs are [bottom=1, middle=2, top=0]
- *    cursor=2  → refs are [bottom=2, middle=0, top=1]
- *
- *  Each ref has a stable "section index" that only increments when
- *  that slot gets recycled to the top. The index drives the rotation
- *  flip (even index = base rotation, odd = base + π).
- *
- *  Scroll: every frame, all three ref Y values decrease by CLIMB_SPEED*delta.
- *
- *  Swap: when the MIDDLE ref's Y <= -SECTION_HEIGHT/2 (avatar at midpoint):
- *    1. Teleport the BOTTOM ref to (TOP ref Y + SECTION_HEIGHT)
- *    2. Advance cursor by 1  →  old bottom becomes new top
- *    3. Increment that slot's section index (new section number)
- *
- *  Background scenery lives inside the world group at fixed Y=0.
- *  The world group only rotates — never translates.
- *  Sections scroll past the background by their own Y movement.
+ * ── Cloud bank ──────────────────────────────────────────────────
+ *  cloudRef is a section-style slot inside worldRef. Its Y is
+ *  driven exactly like a mountain section — it travels DOWN at
+ *  CLIMB_SPEED. It spawns (resets to top) every CLOUD_SPAWN_INTERVAL
+ *  mountain spawns. When the avatar passes through it, background
+ *  scenery is regenerated.
  */
 
 import { useRef, useState } from 'react'
@@ -36,45 +29,70 @@ import {
   WORLD_OFFSET_X, WORLD_OFFSET_Y, WORLD_OFFSET_Z,
   ROTATION_DIR,
   SECTION_HEIGHT,
+  SPAWN_INTERVAL,
   CLIMB_SPEED, ROT_SPEED,
-  CLOUD_T, CLOUD_FRAC,
+  CLOUD_SPAWN_INTERVAL,
+  CLOUD_ABOVE_OFFSET,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
 import { MountainSection } from './MountainHalf'
 
 // ─────────────────────────────────────────────────────────────────
-// Background scenery — trees + mountain cones, fixed in world group
+// Background scenery — randomised per generation
 // ─────────────────────────────────────────────────────────────────
 
-const BG_PEAKS: [number, number, number, number, number][] = [
-  [-55, -45, 22, 46, 0x2a3f1e], [-42, -58, 16, 34, 0x253818],
-  [ 50, -50, 19, 40, 0x2d4220], [ 40, -62, 14, 30, 0x263a1a],
-  [-28, -68, 17, 36, 0x22361a], [ 28, -60, 15, 34, 0x2a3e1e],
-  [-70, -38, 12, 28, 0x1e3016], [ 65, -42, 11, 26, 0x203214],
-  [ 12, -78, 20, 44, 0x2e4422], [-12, -72, 16, 36, 0x243a1c],
-  [  0, -88, 22, 48, 0x304624], [-60, -72, 18, 40, 0x263c1c],
-  [ 58, -68, 17, 38, 0x283e1e],
-]
+// Deterministic-ish random from seed
+function seededRand(seed: number) {
+  let s = seed
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff }
+}
 
-const TREE_XZ: [number, number][] = [
-  [-7,3],[-9,0],[-6,-3],[-10,-6],[-7,-10],[-4,-13],
-  [7,2],[9,-1],[7,-4],[10,-7],[6,-11],[4,-14],
-  [-2,-16],[2,-17],[0,-19],[-12,1],[12,0],
-  [-11,-9],[11,-10],[0,-21],[-14,-3],[14,-4],
-]
+function makeScenery(generation: number) {
+  const rng = seededRand(generation * 7919 + 1)
 
-function BackgroundScenery() {
+  const PEAK_PALETTES = [
+    [0x2a3f1e, 0x253818, 0x2d4220],  // deep green (low)
+    [0x3a5a2a, 0x4a6a38, 0x508040],  // brighter mid-green
+    [0x6a7a5a, 0x7a8a68, 0x8a9a78],  // high rocky green-grey
+    [0x8a8a9a, 0x9a9aaa, 0xaaaacc],  // grey rocky
+    [0xaabbcc, 0xbbccdd, 0xccdded],  // snowy pale blue
+  ]
+  const palette = PEAK_PALETTES[generation % PEAK_PALETTES.length]
+
+  const peaks: [number, number, number, number, number][] = Array.from({ length: 14 }, () => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 40 + rng() * 55
+    const r     = 10 + rng() * 14
+    const h     = 22 + rng() * 32
+    const col   = palette[Math.floor(rng() * palette.length)]
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
+  })
+
+  const TREE_COLS = ['#2a5a1a', '#2f6a20', '#336620', '#3a7226', '#1e4a12']
+  const trees: [number, number, string][] = Array.from({ length: 22 }, (_, i) => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 5 + rng() * 18
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, TREE_COLS[i % TREE_COLS.length]]
+  })
+
+  return { peaks, trees }
+}
+
+interface SceneryProps { generation: number }
+
+function BackgroundScenery({ generation }: SceneryProps) {
+  const { peaks, trees } = makeScenery(generation)
   return (
     <>
-      {BG_PEAKS.map(([x, z, r, h, color], i) => (
+      {peaks.map(([x, z, r, h, color], i) => (
         <mesh key={i} position={[x, h / 2, z]}>
           <coneGeometry args={[r, h, 7]} />
           <meshPhongMaterial color={color} flatShading />
         </mesh>
       ))}
-      {TREE_XZ.map(([x, z], i) => {
-        const s = 0.85 + ((i * 137) % 100) / 182
+      {trees.map(([x, z, col], i) => {
+        const s = 0.85 + (i * 0.037)
         return (
           <group key={i} position={[x, 0, z]}>
             <mesh position={[0, 0.2 * s, 0]}>
@@ -82,10 +100,10 @@ function BackgroundScenery() {
               <meshPhongMaterial color="#5a3a10" />
             </mesh>
             {([
-              [0.70, 0.38, '#2a5a1a'],
-              [0.48, 0.93, '#336620'],
-              [0.26, 1.48, '#3a7226'],
-            ] as [number, number, string][]).map(([sc, yMult, col], ti) => (
+              [0.70, 0.38],
+              [0.48, 0.93],
+              [0.26, 1.48],
+            ] as [number, number][]).map(([sc, yMult], ti) => (
               <mesh key={ti} position={[0, yMult * s, 0]}>
                 <coneGeometry args={[sc * s, 0.7 * s, 6]} />
                 <meshPhongMaterial color={col} flatShading />
@@ -112,107 +130,118 @@ export function MountainWorld({
   onSectionChange,
 }: MountainWorldProps) {
 
-  // ── Fixed group refs — never remount ──────────────────────────
+  // ── Mountain section refs ──────────────────────────────────────
   const worldRef  = useRef<THREE.Group>(null)
+  const bgRef     = useRef<THREE.Group>(null)
   const avatarRef = useRef<THREE.Group>(null)
+  const cloudRef  = useRef<THREE.Group>(null)
+
   const ref0 = useRef<THREE.Group>(null)
   const ref1 = useRef<THREE.Group>(null)
   const ref2 = useRef<THREE.Group>(null)
-  // Stable array — index never changes
   const REFS = [ref0, ref1, ref2] as const
 
-  // ── Per-slot mutable state (refs, not React state) ────────────
-  // y[i]   : current world-Y of the group at REFS[i]
-  // sidx[i]: section index for REFS[i] (drives rotation flip)
-  const y    = useRef<[number, number, number]>([-SECTION_HEIGHT, 0, SECTION_HEIGHT])
-  const sidx = useRef<[number, number, number]>([0, 1, 2])
-
-  // cursor: which physical ref is currently the BOTTOM slot
-  // bottom = cursor, middle = (cursor+1)%3, top = (cursor+2)%3
+  // Section Y positions: bottom = -H, middle = 0, top = +H
+  const secY   = useRef<[number, number, number]>([-SECTION_HEIGHT, 0, SECTION_HEIGHT])
+  const secIdx = useRef<[number, number, number]>([0, 1, 2])
   const cursor = useRef(0)
 
-  // ── Animation state ───────────────────────────────────────────
-  const totalRot    = useRef(0)
-  const frameRef    = useRef(0)
-  const swapLock    = useRef(false)   // one swap per crossing
-  const sectionNum  = useRef(0)       // for onSectionChange HUD
+  // ── Cloud section ──────────────────────────────────────────────
+  // Cloud starts well above the view and scrolls down like a section.
+  // It resets to a new top position every CLOUD_SPAWN_INTERVAL spawns.
+  const cloudY         = useRef(CLOUD_ABOVE_OFFSET)  // local Y inside worldRef
+  const spawnCountRef  = useRef(0)
+  const lastCloudSpawn = useRef(0)   // spawnCount at last cloud reset
 
-  // Position within middle section [0, SECTION_HEIGHT) for CloudBank
-  const scrolledYRef = useRef(0)
+  // ── Scroll tracking ───────────────────────────────────────────
+  const totalScrollY = useRef(0)
+  const lastSpawnY   = useRef(0)
+  const totalRot     = useRef(0)
+  const frameRef     = useRef(0)
+  const sectionNum   = useRef(0)
 
-  // ── React state — only the section indices (for rotation flip) ─
-  // We re-render only when a swap happens to update the rotation prop.
-  const [sectionIndices, setSectionIndices] = useState<[number, number, number]>([0, 1, 2])
+  // ── React state ────────────────────────────────────────────────
+  const [secIndices, setSecIndices]   = useState<[number, number, number]>([0, 1, 2])
+  const [bgGeneration, setBgGeneration] = useState(0)
 
-  // ── Frame loop ────────────────────────────────────────────────
+  // ── Pass-through callback ──────────────────────────────────────
+  const handleCloudPassThrough = () => {
+    setBgGeneration(g => g + 1)
+  }
+
+  // ── Frame loop ─────────────────────────────────────────────────
   useFrame(({ camera }, delta) => {
     frameRef.current++
 
-    // Scroll all three sections downward
     if (isClimbing) {
       const dy = CLIMB_SPEED * delta
-      y.current[0] -= dy
-      y.current[1] -= dy
-      y.current[2] -= dy
-      totalRot.current += ROT_SPEED * delta
+      totalScrollY.current += dy
+      totalRot.current     += ROT_SPEED * delta
+
+      secY.current[0] -= dy
+      secY.current[1] -= dy
+      secY.current[2] -= dy
+
+      // Cloud scrolls down at same speed as sections
+      cloudY.current -= dy
     }
 
-    // Apply Y to each ref directly
+    // Apply Y to mountain sections
     for (let i = 0; i < 3; i++) {
       const g = REFS[i].current
-      if (g) g.position.y = y.current[i]
+      if (g) g.position.y = secY.current[i]
     }
 
-    // Which ref is the middle (current) section?
-    const mid = (cursor.current + 1) % 3
-    const top = (cursor.current + 2) % 3
-    const bot = cursor.current
+    // Apply Y to cloud (inside worldRef so it inherits rotation)
+    if (cloudRef.current) {
+      cloudRef.current.position.y = cloudY.current
+    }
 
-    // CloudBank: how far below 0 the middle section has scrolled
-    scrolledYRef.current = Math.max(0, Math.min(SECTION_HEIGHT, -y.current[mid]))
+    // ── Background mirrors world rotation + translation ─────────
+    if (bgRef.current) {
+      bgRef.current.position.y  = -(totalScrollY.current % 200)
+      bgRef.current.rotation.y  = ROTATION_DIR * totalRot.current
+    }
 
-    // ── Swap: middle section has passed its halfway point ────────
-    if (y.current[mid] <= -(SECTION_HEIGHT * 0.5) && !swapLock.current) {
-      swapLock.current = true
+    // ── Spawn trigger ───────────────────────────────────────────
+    if (totalScrollY.current - lastSpawnY.current >= SPAWN_INTERVAL) {
+      lastSpawnY.current += SPAWN_INTERVAL
 
-      // Teleport BOTTOM ref to just above TOP ref
-      y.current[bot] = y.current[top] + SECTION_HEIGHT
-
-      // Advance cursor: old bottom becomes new top
+      const bot = cursor.current
+      const top = (cursor.current + 2) % 3
+      secY.current[bot] = secY.current[top] + SECTION_HEIGHT
+      secIdx.current[bot] = secIdx.current[bot] + 3
       cursor.current = (cursor.current + 1) % 3
 
-      // Increment the section index for the recycled (now top) slot
-      const newIdx = sidx.current[bot] + 3
-      sidx.current[bot] = newIdx
-
-      // Notify HUD
       sectionNum.current += 1
+      spawnCountRef.current += 1
       onSectionChange?.(sectionNum.current)
 
-      // Trigger re-render so rotation prop updates on the recycled slot
-      setSectionIndices([sidx.current[0], sidx.current[1], sidx.current[2]])
+      setSecIndices([secIdx.current[0], secIdx.current[1], secIdx.current[2]])
+
+      // Reset cloud to above the top section every CLOUD_SPAWN_INTERVAL spawns
+      if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
+        lastCloudSpawn.current = spawnCountRef.current
+        // Place cloud CLOUD_ABOVE_OFFSET units above the highest section Y
+        const topY = Math.max(secY.current[0], secY.current[1], secY.current[2])
+        cloudY.current = topY + CLOUD_ABOVE_OFFSET
+      }
     }
 
-    // Unlock swap once middle has scrolled back past -SECTION_HEIGHT/2
-    // (i.e. after the cursor advanced, the new middle starts near 0)
-    if (y.current[(cursor.current + 1) % 3] > -(SECTION_HEIGHT * 0.5)) {
-      swapLock.current = false
-    }
-
-    // Rotate + position world group
+    // ── Rotate world group ──────────────────────────────────────
     if (worldRef.current) {
       worldRef.current.position.set(WORLD_OFFSET_X, WORLD_OFFSET_Y, WORLD_OFFSET_Z)
       worldRef.current.rotation.y = ROTATION_DIR * totalRot.current
     }
 
-    // Leg bob
+    // ── Leg bob ─────────────────────────────────────────────────
     if (avatarRef.current && isClimbing) {
       const bob = Math.sin(frameRef.current * 0.20) * 0.055
       ;(avatarRef.current.children[0] as THREE.Mesh).position.y = 0.08 + bob
       ;(avatarRef.current.children[1] as THREE.Mesh).position.y = 0.08 - bob
     }
 
-    // Hard-pin camera
+    // ── Hard-pin camera ─────────────────────────────────────────
     camera.position.copy(CAM_POS)
     camera.lookAt(CAM_LOOK)
     const cam = camera as THREE.PerspectiveCamera
@@ -222,29 +251,28 @@ export function MountainWorld({
     }
   })
 
-  // ── Render ───────────────────────────────────────────────────
   return (
     <>
-      {/* Avatar — outside world group, stays fixed in screen space */}
+      {/* Avatar — fixed in screen space */}
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} />
 
-      {/* World group — rotates only, never translates */}
+      {/* Background — sibling of worldRef, manually synced */}
+      <group ref={bgRef}>
+        <BackgroundScenery key={bgGeneration} generation={bgGeneration} />
+      </group>
+
+      {/* World group — rotates only */}
       <group ref={worldRef}>
 
-        {/* 3 fixed slots — each bound to its own stable ref */}
-        <MountainSection groupRef={ref0} sectionIndex={sectionIndices[0]} />
-        <MountainSection groupRef={ref1} sectionIndex={sectionIndices[1]} />
-        <MountainSection groupRef={ref2} sectionIndex={sectionIndices[2]} />
+        {/* Mountain sections */}
+        <MountainSection groupRef={ref0} sectionIndex={secIndices[0]} />
+        <MountainSection groupRef={ref1} sectionIndex={secIndices[1]} />
+        <MountainSection groupRef={ref2} sectionIndex={secIndices[2]} />
 
-        {/* Background — fixed in world group, rotates with it */}
-        <BackgroundScenery />
-
-        {/* Cloud band */}
+        {/* Cloud bank — travels down like a section, swaps background on passage */}
         <CloudBank
-          localY={CLOUD_FRAC * SECTION_HEIGHT}
-          scrolledYRef={scrolledYRef}
-          isCurrentFloor={true}
-          cloudT={CLOUD_T}
+          groupRef={cloudRef}
+          onPassThrough={handleCloudPassThrough}
         />
 
       </group>
