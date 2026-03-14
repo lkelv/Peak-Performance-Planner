@@ -17,6 +17,14 @@
  *  is then positioned at (mountainSpawnScrollY - totalScrollY),
  *  which places them at world-Y ≈ 0 (cloud level) at the instant
  *  they spawn, and they scroll down naturally from there.
+ *
+ * ── Ground plane (Fix #1) ────────────────────────────────────────
+ *  GroundPlane scrolls with totalScrollY (same as bgTreesRef) so it
+ *  starts visible at the base and sinks below camera as the avatar
+ *  climbs.  As the first cloud bank descends toward the avatar the
+ *  plane fades out smoothly, and once the cloud passes through it is
+ *  unmounted entirely — matching the same moment the background
+ *  mountains and trees regenerate above the clouds.
  */
 
 import { useRef, useState, useMemo } from 'react'
@@ -45,6 +53,13 @@ import {
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
+import { GroundPlane } from './GroundPlane'
+import { CelestialBodies } from './SkyScene'
+
+// How far above the avatar the cloud starts fading the ground out.
+// When cloudWorldY drops below this value the ground begins to fade.
+const GROUND_FADE_START_Y =  8   // cloud is 8 units above avatar → start fade
+const GROUND_FADE_END_Y   = -2   // cloud is at/past avatar      → fully gone
 
 // ─────────────────────────────────────────────────────────────────
 // Seeded RNG
@@ -136,21 +151,18 @@ function BackgroundMountains({ generation }: { generation: number }) {
           <meshPhongMaterial color={color} flatShading transparent opacity={0} />
         </mesh>
       ))}
-
       {snowCaps.map(([x, z, r, h], i) => (
         <mesh key={`sc${i}`} position={[x, tallFar[i][3] - h * 0.5 - 8, z]}>
           <coneGeometry args={[r, h * 2, 7]} />
           <meshPhongMaterial color={0xeef4ff} flatShading transparent opacity={0} />
         </mesh>
       ))}
-
       {midPeaks.map(([x, z, r, h, color], i) => (
         <mesh key={`mp${i}`} position={[x, h / 2 - 5, z]}>
           <coneGeometry args={[r, h, 7]} />
           <meshPhongMaterial color={color} flatShading transparent opacity={0} />
         </mesh>
       ))}
-
       {nearPeaks.map(([x, z, r, h, color], i) => (
         <mesh key={`np${i}`} position={[x, h / 2 - 3, z]}>
           <coneGeometry args={[r, h, 6]} />
@@ -222,28 +234,26 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       const clone = scene.clone(true)
       clone.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
-          (child as THREE.Mesh).castShadow = true;
-          (child as THREE.Mesh).receiveShadow = true
+          (child as THREE.Mesh).castShadow = true
+          ;(child as THREE.Mesh).receiveShadow = true
         }
       })
       return clone
     })
   }, [scene])
 
-  // scratch vector — avoids allocating every frame
-  const _camPosLerp = new THREE.Vector3()
-
-  // inside the component, alongside the other refs:
-  const camProgressRef = useRef(0)
-
-  // add a scratch vector for look target (alongside the existing _camPosLerp)
+  // scratch vectors — avoids allocating every frame
+  const _camPosLerp  = new THREE.Vector3()
   const _camLookLerp = new THREE.Vector3()
+
+  const camProgressRef = useRef(0)
 
   const worldRef       = useRef<THREE.Group>(null)
   const bgMountainsRef = useRef<THREE.Group>(null)
   const bgTreesRef     = useRef<THREE.Group>(null)
   const avatarRef      = useRef<THREE.Group>(null)
   const cloudRef       = useRef<THREE.Group>(null)
+  const groundRef      = useRef<THREE.Group>(null)   // ← ground plane ref
 
   const ref0 = useRef<THREE.Group>(null)
   const ref1 = useRef<THREE.Group>(null)
@@ -272,12 +282,17 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
   const mountainSpawnScrollY = useRef(0)
 
-  const [secIndices, setSecIndices] = useState<[number, number, number, number, number]>([0, 1, 2, 3, 4])
+  const [secIndices,          setSecIndices]          = useState<[number,number,number,number,number]>([0,1,2,3,4])
   const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
+
+  // Once this flips to true the ground plane is unmounted
+  const [groundGone, setGroundGone] = useState(false)
 
   const handleCloudPassThrough = () => {
     mountainSpawnScrollY.current = totalScrollY.current
     setBgMountainGeneration(g => g + 1)
+    // First cloud pass-through → permanently remove the ground plane
+    setGroundGone(true)
   }
 
   useFrame(({ camera }, delta) => {
@@ -311,6 +326,32 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       bgTreesRef.current.rotation.y = sharedRotY
     }
 
+    // ── Ground plane: scroll + fade ───────────────────────────────
+    if (groundRef.current && !groundGone) {
+      // Scroll at the same rate as the background trees
+      groundRef.current.position.y = -(totalScrollY.current % 200)
+
+      // Fade out as the cloud bank descends toward the avatar.
+      // cloudY.current is the cloud's current Y in world space (starts high,
+      // counts down toward 0 as the avatar "climbs").
+      const cy     = cloudY.current
+      const fadeT  = 1 - THREE.MathUtils.clamp(
+        (cy - GROUND_FADE_END_Y) / (GROUND_FADE_START_Y - GROUND_FADE_END_Y),
+        0, 1,
+      )
+      const opacity = 1 - fadeT   // 1 = fully visible, 0 = invisible
+
+      groundRef.current.traverse((child) => {
+        const mesh = child as THREE.Mesh
+        if (mesh.isMesh) {
+          const mat = mesh.material as THREE.MeshPhongMaterial
+          mat.transparent = opacity < 1
+          mat.opacity = opacity
+          mat.needsUpdate = true
+        }
+      })
+    }
+
     // Position-based section recycling
     const bot = cursor.current
     if (secY.current[bot] < RECYCLE_THRESHOLD) {
@@ -320,7 +361,7 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       cursor.current      = (cursor.current + 1) % POOL
 
       spawnCountRef.current += 1
-      setSecIndices([...secIdx.current] as [number, number, number, number, number])
+      setSecIndices([...secIdx.current] as [number,number,number,number,number])
 
       if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
         lastCloudSpawn.current = spawnCountRef.current
@@ -333,15 +374,13 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       worldRef.current.rotation.y = sharedRotY
     }
 
-    // ── Camera zoom pan ─────────────────────────────────────────────
-    // Progress animates 0→1 when climbing, 1→0 when paused.
+    // ── Camera zoom pan ──────────────────────────────────────────
     if (isClimbing) {
       camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
     } else {
       camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
     }
 
-    // Cubic ease-out in both directions
     const p = camProgressRef.current
     const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 
@@ -355,7 +394,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
   })
 
-  // Helper to get rotation/offset for a given section index
   const getSectionTransform = (sectionIndex: number) => {
     const isOdd = sectionIndex % 2 === 1
     const rotY  = SECTION_ROTATION_Y + (isOdd ? Math.PI : 0)
@@ -367,9 +405,18 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     <>
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} />
 
-      {/* Mountains — separate group, repositioned to cloud Y on each remount */}
+      {/*
+        Ground plane — visible at the mountain base, scrolls down with
+        totalScrollY, fades out as the cloud bank approaches, and is
+        unmounted permanently after the first cloud pass-through.
+        Sits outside worldRef so it isn't affected by section rotation.
+      */}
+      {!groundGone && <GroundPlane ref={groundRef} />}
+
+      {/* Mountains + celestial bodies — same group so sun/moon rotate with the world */}
       <group ref={bgMountainsRef}>
         <BackgroundMountains key={bgMountainGeneration} generation={bgMountainGeneration} />
+        <CelestialBodies />
       </group>
 
       {/* Trees — separate group, permanently scrolling, never remounted */}
@@ -377,7 +424,7 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
         <BackgroundTrees />
       </group>
 
-      {/* World group — GLB sections + cloud bank rotate together */}
+      {/* World group — GLB sections + cloud bank rotate and scroll together */}
       <group ref={worldRef}>
         {([ref0, ref1, ref2, ref3, ref4] as const).map((ref, i) => {
           const { rotY, offX } = getSectionTransform(secIndices[i])
