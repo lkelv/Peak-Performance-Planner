@@ -32,9 +32,14 @@ export function MountainSection({ groupRef, sectionIndex }: MountainSectionProps
   const { scene } = useGLTF(GLB_PATH)
 
   const cloned = useRef<THREE.Group | null>(null)
-  if (!cloned.current) {
-    cloned.current = scene.clone(true)
-  }
+  
+  cloned.current = scene.clone(true)
+  cloned.current.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      (child as THREE.Mesh).castShadow = true;
+      (child as THREE.Mesh).receiveShadow = true
+    }
+})
 
   const isOdd = sectionIndex % 2 === 1
   const rotY  = SECTION_ROTATION_Y + (isOdd ? Math.PI : 0)

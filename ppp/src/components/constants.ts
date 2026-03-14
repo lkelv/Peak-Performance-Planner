@@ -16,7 +16,7 @@ export const CAM_FOV  = 20
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
-export const AVATAR_POS:   [number, number, number] = [6.4, 1.7, 4]
+export const AVATAR_POS:   [number, number, number] = [6.7, 1.726, 3.3]
 export const AVATAR_SCALE: number = 0.4
 
 // ─────────────────────────────────────────────────────────────────
@@ -34,8 +34,9 @@ export const ROTATION_DIR:   number = -1.0
 // CLIMB_SPEED : world-units/second everything scrolls downward.
 // ROT_SPEED   : radians/second the world group rotates around Y.
 // ─────────────────────────────────────────────────────────────────
-export const CLIMB_SPEED: number = 0.3183
-export const ROT_SPEED:   number = 0.3
+const OVERALL_SPEED: number = 0.75
+export const CLIMB_SPEED: number = 0.1*OVERALL_SPEED
+export const ROT_SPEED:   number = 0.0942*OVERALL_SPEED
 
 // ─────────────────────────────────────────────────────────────────
 // GLB MOUNTAIN SECTION

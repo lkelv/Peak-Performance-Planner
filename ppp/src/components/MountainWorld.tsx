@@ -294,11 +294,11 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     }
 
     // Leg bob
-    if (avatarRef.current && isClimbing) {
-      const bob = Math.sin(frameRef.current * 0.20) * 0.055
-      ;(avatarRef.current.children[0] as THREE.Mesh).position.y = 0.08 + bob
-      ;(avatarRef.current.children[1] as THREE.Mesh).position.y = 0.08 - bob
-    }
+    // if (avatarRef.current && isClimbing) {
+    //   const bob = Math.sin(frameRef.current * 0.20) * 0.055
+    //   ;(avatarRef.current.children[0] as THREE.Mesh).position.y = 0.08 + bob
+    //   ;(avatarRef.current.children[1] as THREE.Mesh).position.y = 0.08 - bob
+    // }
 
     camera.position.copy(CAM_POS)
     camera.lookAt(CAM_LOOK)
@@ -308,7 +308,7 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
   return (
     <>
-      <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} />
+      <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} />
 
       {/* Mountains — separate group, repositioned to cloud Y on each remount */}
       <group ref={bgMountainsRef}>
