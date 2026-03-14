@@ -20,7 +20,7 @@ export default function LoginPage({ onAuth }: LoginPageProps) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-gray-100">
         <h2 className="text-2xl font-semibold text-center text-gray-800 mb-8">
-          Login
+          {isSignUp ? 'Create Account' : 'Sign In'}
         </h2>
         
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -58,9 +58,22 @@ export default function LoginPage({ onAuth }: LoginPageProps) {
             type="submit"
             className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors"
           >
-            Sign In
+            {isSignUp ? 'Create Account' : 'Sign In'}
           </button>
         </form>
+
+        <div className="mt-6 flex flex-col items-center gap-3 text-sm">
+          <span className="text-gray-600">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="w-full py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+          >
+            {isSignUp ? 'Sign In Instead' : 'Create Account'}
+          </button>
+        </div>
       </div>
     </div>
   );

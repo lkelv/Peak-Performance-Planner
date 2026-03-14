@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
 import LoginPage from './components/LoginPage';
@@ -38,12 +39,30 @@ function App() {
     }
   };
 
-  // Render the main application once a user is authenticated
-  if (session) {
-    return <Home session={session} onSignOut={() => supabase.auth.signOut()} />;
-  }
-
-  return <LoginPage onAuth={handleAuth} />;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            session ? <Navigate to="/home" replace /> : <LoginPage onAuth={handleAuth} />
+          } 
+        />
+        <Route 
+          path="/home" 
+          element={
+            session ? (
+              <Home session={session} onSignOut={() => supabase.auth.signOut()} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } 
+        />
+        {/* Catch-all route to redirect unknown URLs to root */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 export default App;
