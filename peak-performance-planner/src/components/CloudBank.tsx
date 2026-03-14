@@ -1,7 +1,7 @@
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { FLOOR_HEIGHT, CLOUD_FADE, CLOUD_THICK } from './constants'
+import { SECTION_HEIGHT, CLOUD_FADE, CLOUD_THICK } from './constants'
 
 interface Puff {
   pos: [number, number, number]
@@ -48,20 +48,18 @@ export function CloudBank({ localY, scrolledYRef, isCurrentFloor, cloudT }: Clou
 
     groupRef.current.rotation.y += delta * 0.035
 
-    // scrolledYRef is always in [0, FLOOR_HEIGHT).
-    // cloudLocalY within the floor = cloudT * FLOOR_HEIGHT.
+    // scrolledYRef is in [0, SECTION_HEIGHT).
+    // cloudLocalY within the section = cloudT * SECTION_HEIGHT.
     // distBelow > 0 means cloud is still above the avatar.
-    const cloudFloorY = cloudT * FLOOR_HEIGHT  // same coordinate space as scrolledY
+    const cloudFloorY = cloudT * SECTION_HEIGHT
     const scrolled    = scrolledYRef.current ?? 0
     const distBelow   = cloudFloorY - scrolled
 
     let opacity = 0
     if (isCurrentFloor) {
       if (distBelow >= 0 && distBelow < CLOUD_FADE) {
-        // Approaching from below: fade in
         opacity = 1 - distBelow / CLOUD_FADE
       } else if (distBelow < 0 && distBelow > -CLOUD_THICK) {
-        // Just passed through: fade out
         opacity = 1 - Math.abs(distBelow) / CLOUD_THICK
       }
       opacity = Math.max(0, Math.min(1, opacity))

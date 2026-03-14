@@ -1,64 +1,53 @@
 /**
  * MountainHalf.tsx
  *
- * Renders one half-mountain GLB section (Left or Right).
- * The two halves pair together to form a complete mountain cross-section.
- * They are stacked vertically and alternate L/R endlessly.
+ * Renders one GLB instance inside a group whose ref is owned by MountainWorld.
+ * MountainWorld moves the group's Y directly every frame — this component
+ * never needs to re-render for position changes.
  *
- * ── Tunables ────────────────────────────────────────────────────
- * All constants live in constants.ts — edit there, not here:
- *   HALF_HEIGHT    — vertical extent of each GLB section
- *   GLB_PATH_LEFT  — public path to Mountain_Left.glb
- *   GLB_PATH_RIGHT — public path to Mountain_Right.glb
+ * sectionIndex : ever-increasing integer.
+ *   Even  → SECTION_ROTATION_Y
+ *   Odd   → SECTION_ROTATION_Y + Math.PI  (flipped 180°)
+ * This alternation makes consecutive sections face opposite directions,
+ * connecting the path into a continuous spiral.
  */
 
-import { useRef, memo } from 'react'
+import { useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { GLB_PATH_LEFT, GLB_PATH_RIGHT } from './constants'
+import {
+  GLB_PATH,
+  SECTION_SCALE,
+  SECTION_OFFSET_X,
+  SECTION_OFFSET_Z,
+  SECTION_ROTATION_Y,
+} from './constants'
 
-// ─── types (re-exported for MountainWorld) ───────────────────────
-
-export type Side = 'left' | 'right'
-
-export interface HalfSlot {
-  /** Unique, ever-increasing id used as React key */
-  id:    number
-  /** Which GLB to render */
-  side:  Side
-  /** World-space Y offset of this section's base */
-  baseY: number
+interface MountainSectionProps {
+  groupRef:     React.RefObject<THREE.Group>
+  sectionIndex: number
 }
 
-// ─── component ───────────────────────────────────────────────────
+export function MountainSection({ groupRef, sectionIndex }: MountainSectionProps) {
+  const { scene } = useGLTF(GLB_PATH)
 
-interface MountainHalfProps {
-  slot: HalfSlot
-}
-
-/**
- * A single half-mountain section.
- * Position is driven entirely by `slot.baseY`; the parent `MountainWorld`
- * shifts the whole group downward over time to create the climbing illusion.
- */
-export const MountainHalf = memo(function MountainHalf({ slot }: MountainHalfProps) {
-  const path = slot.side === 'left' ? GLB_PATH_LEFT : GLB_PATH_RIGHT
-  const { scene } = useGLTF(path)
-
-  // Clone the scene so each slot gets its own independent object graph.
-  const clonedScene = useRef<THREE.Group | null>(null)
-  if (!clonedScene.current) {
-    clonedScene.current = scene.clone(true)
+  const cloned = useRef<THREE.Group | null>(null)
+  if (!cloned.current) {
+    cloned.current = scene.clone(true)
   }
 
-  return (
-    <primitive
-      object={clonedScene.current}
-      position={[0, slot.baseY, 0]}
-    />
-  )
-})
+  const rotY = SECTION_ROTATION_Y + (sectionIndex % 2) * Math.PI
 
-// Preload both assets so they are ready before the first render.
-useGLTF.preload(GLB_PATH_LEFT)
-useGLTF.preload(GLB_PATH_RIGHT)
+  return (
+    <group ref={groupRef}>
+      <primitive
+        object={cloned.current}
+        position={[SECTION_OFFSET_X, 0, SECTION_OFFSET_Z]}
+        rotation={[0, rotY, 0]}
+        scale={SECTION_SCALE}
+      />
+    </group>
+  )
+}
+
+useGLTF.preload(GLB_PATH)

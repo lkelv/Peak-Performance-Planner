@@ -7,8 +7,9 @@ import {
   CAM_POS, CAM_LOOK, CAM_FOV,
   AVATAR_POS, AVATAR_SCALE,
   WORLD_OFFSET_X, WORLD_OFFSET_Y, WORLD_OFFSET_Z,
-  PATH_START_T, FLOOR_SWAP_DELAY_MS,
+  PATH_START_T,
 } from './constants'
+import type { FloorState } from './constants'
 import { Floor } from './Floor'
 import { Avatar } from './Avatar'
 
@@ -18,24 +19,26 @@ interface WorldProps {
   onFloorChange: (floorNumber: number) => void
 }
 
-// Each slot has a stable numeric key (used as React key) and a localY
-interface FloorSlot { key: number; localY: number; isCurrent: boolean }
-
 export function World({ onFloorChange }: WorldProps) {
-  const worldRef       = useRef<THREE.Group>(null)
-  const frameRef       = useRef(0)
-  const avatarRef      = useRef<THREE.Group>(null)
-  const scrolledYRef   = useRef(PATH_START_T * FLOOR_HEIGHT)
-  const totalRotRef    = useRef(PATH_START_T * FLOOR_HEIGHT * ROT_PER_Y)
-  const floorNumberRef = useRef(1)
-  const nextKeyRef     = useRef(2) // monotonically increasing key counter
+  const worldRef     = useRef<THREE.Group>(null)
+  const frameRef     = useRef(0)
+  const lastFloorRef = useRef(0)
+  const avatarRef    = useRef<THREE.Group>(null)
 
-  // slots: normally 2 entries [current, next]
-  // briefly 3 entries [prev, current, next] during the delay window
-  const [slots, setSlots] = useState<FloorSlot[]>([
-    { key: 0, localY: 0,            isCurrent: true  },
-    { key: 1, localY: FLOOR_HEIGHT, isCurrent: false },
-  ])
+  // scrolledY stays in [0, FLOOR_HEIGHT) — it resets on each floor transition.
+  // This prevents floating-point drift and keeps world.position.y small.
+  const scrolledYRef  = useRef(PATH_START_T * FLOOR_HEIGHT)
+
+  // Total accumulated rotation so it stays continuous across resets.
+  const totalRotRef   = useRef(PATH_START_T * FLOOR_HEIGHT * ROT_PER_Y)
+
+  // Floor display number shown in HUD (1-based)
+  const floorNumberRef = useRef(1)
+
+  // Only ever two floors mounted: slot 0 = current, slot 1 = next.
+  // Both always sit at fixed localY: current=0, next=FLOOR_HEIGHT.
+  // On transition we just swap their keys to remount geometry.
+  const [floorKeys, setFloorKeys] = useState<[number, number]>([0, 1])
 
   useFrame(({ camera }) => {
     frameRef.current++
@@ -48,37 +51,24 @@ export function World({ onFloorChange }: WorldProps) {
 
     // ── Floor transition ─────────────────────────────────────────
     if (scrolledYRef.current >= FLOOR_HEIGHT) {
+      // Wrap scrolledY back — world.position.y never grows unboundedly
       scrolledYRef.current -= FLOOR_HEIGHT
+
       floorNumberRef.current += 1
       onFloorChange(floorNumberRef.current)
 
-      const freshKey = nextKeyRef.current++
-
-      setSlots(prev => {
-        const oldKey = prev[0].key
-
-        // Remove the old floor after the delay — key is safely captured here
-        setTimeout(() => {
-          setSlots(s => s.filter(slot => slot.key !== oldKey))
-        }, FLOOR_SWAP_DELAY_MS)
-
-        return [
-          // Old current: pushed below visible range, removed after delay
-          { ...prev[0], isCurrent: false, localY: -FLOOR_HEIGHT },
-          // Old next promoted to current at y=0
-          { ...prev[1], isCurrent: true, localY: 0 },
-          // Fresh next floor above
-          { key: freshKey, localY: FLOOR_HEIGHT, isCurrent: false },
-        ]
-      })
+      // Advance keys: old "next" becomes new "current", spawn fresh "next"
+      setFloorKeys(([, next]) => [next, next + 1])
     }
 
     // ── Apply world transform ────────────────────────────────────
+    // world.position.y stays in [-FLOOR_HEIGHT, 0] — always small
     world.position.set(
       WORLD_OFFSET_X,
       -scrolledYRef.current + WORLD_OFFSET_Y,
       WORLD_OFFSET_Z,
     )
+    // totalRotRef accumulates continuously so rotation never jumps
     world.rotation.y = ROTATION_DIR * -totalRotRef.current
 
     // ── Leg bob ──────────────────────────────────────────────────
@@ -102,15 +92,21 @@ export function World({ onFloorChange }: WorldProps) {
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} />
 
       <group ref={worldRef}>
-        {slots.map(slot => (
-          <Floor
-            key={slot.key}
-            localY={slot.localY}
-            cloudT={CLOUD_T}
-            scrolledYRef={scrolledYRef}
-            isCurrentFloor={slot.isCurrent}
-          />
-        ))}
+        {/* Current floor always at localY=0, next always at localY=FLOOR_HEIGHT */}
+        <Floor
+          key={floorKeys[0]}
+          localY={0}
+          cloudT={CLOUD_T}
+          scrolledYRef={scrolledYRef}
+          isCurrentFloor
+        />
+        <Floor
+          key={floorKeys[1]}
+          localY={FLOOR_HEIGHT}
+          cloudT={CLOUD_T}
+          scrolledYRef={scrolledYRef}
+          isCurrentFloor={false}
+        />
       </group>
     </>
   )

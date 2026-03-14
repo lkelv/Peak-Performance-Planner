@@ -1,26 +1,24 @@
 /**
- * MountainScene.tsx  (updated)
+ * MountainScene.tsx
  *
- * Drop-in replacement for the original MountainScene.
- * Swaps out the procedural World / Floor system for the
- * GLB-based MountainWorld with alternating Left / Right halves.
+ * Top-level canvas wrapper.  Drop-in replacement for the original.
+ * Passes isClimbing down to MountainWorld to start/stop the scroll.
  *
  * Usage:
  *   <MountainScene goalName="Complete Semester 1" isClimbing={timerRunning} />
  */
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Suspense } from 'react'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { HUD } from './HUD'
 import { CAM_POS, CAM_FOV } from './constants'
 
 interface MountainSceneProps {
-  goalName?:  string
-  height?:    number
-  /** Pass false to pause climbing (e.g. timer stopped / break mode) */
+  goalName?:   string
+  height?:     number
+  /** false = avatar idles, world stops scrolling */
   isClimbing?: boolean
 }
 
@@ -42,7 +40,6 @@ export default function MountainScene({
         }}
         shadows
       >
-        {/* ── Lighting ── */}
         <ambientLight color="#c8ddf0" intensity={1.8} />
         <directionalLight
           position={[40, 80, 30]}
@@ -53,10 +50,8 @@ export default function MountainScene({
         />
         <hemisphereLight args={['#aad4f5', '#4a7a30', 0.9]} />
 
-        {/* ── Sky dome + decorative clouds ── */}
         <SkyScene />
 
-        {/* ── Mountain world — GLB halves + avatar ── */}
         <Suspense fallback={null}>
           <MountainWorld
             isClimbing={isClimbing}
@@ -65,7 +60,6 @@ export default function MountainScene({
         </Suspense>
       </Canvas>
 
-      {/* ── HUD overlay ── */}
       <HUD goalName={goalName} floor={section} />
     </div>
   )

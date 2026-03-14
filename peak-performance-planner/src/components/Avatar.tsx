@@ -33,7 +33,7 @@ export const Avatar = forwardRef<THREE.Group, AvatarProps>(({ position, scale = 
     </mesh>
 
     {/* Backpack */}
-    <mesh position={[0, 0.42, -0.15]}>
+    <mesh position={[0, 0.42, 0.15]}>
       <boxGeometry args={[0.20, 0.30, 0.13]} />
       <meshStandardMaterial color="#7a3a0e" roughness={0.9} />
     </mesh>
