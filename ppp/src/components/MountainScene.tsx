@@ -3,16 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { CAM_POS, CAM_FOV } from './constants'
-import {
-  TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
-  AMBIENT_INTENSITY_DAY, AMBIENT_INTENSITY_DUSK, AMBIENT_INTENSITY_NIGHT,
-  AMBIENT_COLOR_DAY, AMBIENT_COLOR_DUSK, AMBIENT_COLOR_NIGHT,
-  DIRLIGHT_INTENSITY_DAY, DIRLIGHT_INTENSITY_DUSK, DIRLIGHT_INTENSITY_NIGHT,
-  MOONLIGHT_INTENSITY_NIGHT, MOONLIGHT_COLOR,
-  HEMI_SKY_DAY, HEMI_GND_DAY, HEMI_INT_DAY,
-  HEMI_SKY_DUSK, HEMI_GND_DUSK, HEMI_INT_DUSK,
-  HEMI_SKY_NIGHT, HEMI_GND_NIGHT, HEMI_INT_NIGHT,
-} from './constants'
+
 
 function localHour(): number {
   const now = new Date()
