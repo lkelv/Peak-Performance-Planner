@@ -1,67 +1,77 @@
-import { forwardRef } from 'react'
+import { forwardRef, useEffect, useRef } from 'react'
+import { useGLTF, useAnimations } from '@react-three/drei'
 import * as THREE from 'three'
+
+const AVATAR_GLB = '/avatar.glb'  // drop your file in /public
 
 interface AvatarProps {
   position: [number, number, number]
   scale?: number
+  isClimbing?: boolean
 }
 
-export const Avatar = forwardRef<THREE.Group, AvatarProps>(({ position, scale = 1 }, ref) => (
-  <group ref={ref} position={position} scale={scale}>
-    {/* Left leg  — index 0 (leg bob target) */}
-    <mesh position={[-0.07, 0.08, 0]}>
-      <cylinderGeometry args={[0.055, 0.06, 0.30, 6]} />
-      <meshStandardMaterial color="#1e2e4a" roughness={0.8} />
-    </mesh>
+export const Avatar = forwardRef<THREE.Group, AvatarProps>(
+  ({ position, scale = 1, isClimbing = true }, ref) => {
+    const group = useRef<THREE.Group>(null)
+    const { scene, animations } = useGLTF(AVATAR_GLB)
+    const { actions, names } = useAnimations(animations, group)
 
-    {/* Right leg — index 1 (leg bob target) */}
-    <mesh position={[0.07, 0.08, 0]}>
-      <cylinderGeometry args={[0.055, 0.06, 0.30, 6]} />
-      <meshStandardMaterial color="#1e2e4a" roughness={0.8} />
-    </mesh>
+    // Wire the ref up
+    useEffect(() => {
+      if (ref && typeof ref !== 'function') ref.current = group.current
+    }, [ref])
 
-    {/* Torso */}
-    <mesh position={[0, 0.38, 0]}>
-      <cylinderGeometry args={[0.12, 0.14, 0.38, 8]} />
-      <meshStandardMaterial color="#1a4a8a" roughness={0.7} />
-    </mesh>
+    // Traverse shadows
+    useEffect(() => {
+      group.current?.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).castShadow = true;
+          (child as THREE.Mesh).receiveShadow = true
+        }
+      })
+    }, [])
 
-    {/* Head */}
-    <mesh position={[0, 0.74, 0]}>
-      <sphereGeometry args={[0.14, 12, 12]} />
-      <meshStandardMaterial color="#c07850" roughness={0.6} />
-    </mesh>
+    useEffect(() => {
+      group.current?.traverse((child) => {
+        const mesh = child as THREE.Mesh
+        if (mesh.isMesh) {
+          mesh.castShadow = true
+          mesh.receiveShadow = true
 
-    {/* Backpack */}
-    <mesh position={[0, 0.42, 0.15]}>
-      <boxGeometry args={[0.20, 0.30, 0.13]} />
-      <meshStandardMaterial color="#7a3a0e" roughness={0.9} />
-    </mesh>
+          // Tint materials to match environment
+          const mat = mesh.material as THREE.MeshStandardMaterial
+          if (mat) {
+            mat.color.multiplyScalar(1.3)        // slightly lighten
+            mat.color.lerp(new THREE.Color('#a8c070'), 0.08)  // nudge toward scene greens
+            mat.roughness = Math.min((mat.roughness ?? 0.5) + 0.2, 1)  // less shiny
+            mat.needsUpdate = true
+          }
+        }
+      })
+    }, [])
 
-    {/* Left arm */}
-    <mesh position={[-0.19, 0.37, 0]} rotation={[0, 0, -0.35]}>
-      <cylinderGeometry args={[0.044, 0.044, 0.30, 5]} />
-      <meshStandardMaterial color="#1a4a8a" roughness={0.7} />
-    </mesh>
+    // Switch between walk and idle
+    useEffect(() => {
+      const walkAction = actions[names.find(n => n.toLowerCase().includes('walk')) ?? names[0]]
+      const idleAction = actions[names.find(n => n.toLowerCase().includes('idle')) ?? names[0]]
 
-    {/* Right arm */}
-    <mesh position={[0.19, 0.37, 0]} rotation={[0, 0, 0.35]}>
-      <cylinderGeometry args={[0.044, 0.044, 0.30, 5]} />
-      <meshStandardMaterial color="#1a4a8a" roughness={0.7} />
-    </mesh>
+      if (isClimbing) {
+        idleAction?.fadeOut(0.3)
+        walkAction?.reset().fadeIn(0.3).play()
+      } else {
+        walkAction?.fadeOut(0.3)
+        idleAction?.reset().fadeIn(0.3).play()
+      }
+    }, [isClimbing, actions, names])
 
-    {/* Hat brim */}
-    <mesh position={[0, 0.87, 0]}>
-      <cylinderGeometry args={[0.20, 0.20, 0.04, 12]} />
-      <meshStandardMaterial color="#3a2810" roughness={0.9} />
-    </mesh>
-
-    {/* Hat crown */}
-    <mesh position={[0, 0.97, 0]}>
-      <cylinderGeometry args={[0.13, 0.16, 0.18, 12]} />
-      <meshStandardMaterial color="#3a2810" roughness={0.9} />
-    </mesh>
-  </group>
-))
+    
+    return (
+      <group ref={group} position={position} scale={0.3} rotation={[0, Math.PI*0.87, 0]}>
+        <primitive object={scene} />
+      </group>
+    )
+  }
+  )
 
 Avatar.displayName = 'Avatar'
+useGLTF.preload(AVATAR_GLB)

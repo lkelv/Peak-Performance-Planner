@@ -6,17 +6,28 @@ import * as THREE from 'three'
 // ║  Change these first before touching any component file.          ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
+
+
 // ─────────────────────────────────────────────────────────────────
 // CAMERA
+// Interesting cam_pos: (5, 2, 10), (20, 2, 10), (20, 2.6, 13)
+// Look:                (8, 3, -1), (8, 3, -1),  (-50, 2, -50)
+// FOV:                 20        , 20           , 10
 // ─────────────────────────────────────────────────────────────────
-export const CAM_POS  = new THREE.Vector3(5, 2, 10)
-export const CAM_LOOK = new THREE.Vector3(8, 3, -1)
-export const CAM_FOV  = 20
+export const CAM_POS       = new THREE.Vector3(5, 2, 10)
+export const CAM_LOOK      = new THREE.Vector3(8, 3, -1)
+export const CAM_FOV       = 20
+
+// Zoomed-out starting position — camera pans in to CAM_POS when climbing begins
+export const CAM_POS_START = new THREE.Vector3(20, 2.6, 13)   // pulled back & slightly lower
+export const CAM_FOV_START = 30                                // wider FOV = more zoomed out
+export const CAM_LOOK_START = new THREE.Vector3(12, 2.5, 0)
+export const CAM_INTRO_SEC = 2.2                               // seconds to complete the pan
 
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
-export const AVATAR_POS:   [number, number, number] = [6.4, 1.7, 4]
+export const AVATAR_POS:   [number, number, number] = [6.7, 1.724, 3.3]
 export const AVATAR_SCALE: number = 0.4
 
 // ─────────────────────────────────────────────────────────────────
@@ -34,15 +45,16 @@ export const ROTATION_DIR:   number = -1.0
 // CLIMB_SPEED : world-units/second everything scrolls downward.
 // ROT_SPEED   : radians/second the world group rotates around Y.
 // ─────────────────────────────────────────────────────────────────
-export const CLIMB_SPEED: number = 0.3183
-export const ROT_SPEED:   number = 0.3
+const OVERALL_SPEED: number = 0.75 //0.75 is good
+export const CLIMB_SPEED: number = 0.1*OVERALL_SPEED
+export const ROT_SPEED:   number = 0.0944*OVERALL_SPEED
 
 // ─────────────────────────────────────────────────────────────────
 // GLB MOUNTAIN SECTION
 // ─────────────────────────────────────────────────────────────────
 export const GLB_PATH:           string = '/mountain.glb'
 export const SECTION_SCALE:      number = 1
-export const SECTION_HEIGHT:     number = 10 / 3
+export const SECTION_HEIGHT:     number = 3.328
 export const RECYCLE_THRESHOLD:  number = -SECTION_HEIGHT * 2.4
 export const SECTION_OFFSET_X:   number = 0
 export const SECTION_OFFSET_Z:   number = 0.0
