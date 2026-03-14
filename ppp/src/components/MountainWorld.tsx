@@ -1,30 +1,13 @@
 /**
  * MountainWorld.tsx
  *
- * ── Mountain sections ────────────────────────────────────────────
- *  5 GLB slots in a circular buffer. All 5 clones are created once
- *  upfront to avoid per-frame stutter. Position-based recycling:
- *  the bottom slot teleports to the top once it drops below
- *  RECYCLE_THRESHOLD.
+ * Owns the sun directional light (castShadow). Updates its position
+ * each frame so the shadow always falls opposite to the current sun
+ * direction, which rotates with the world via totalRot.
  *
- * ── Background scrolling ─────────────────────────────────────────
- *  Mountains and trees live in SEPARATE groups so they can be
- *  positioned independently.
- *
- * ── Cloud bank + mountain respawn ────────────────────────────────
- *  When the cloud passes the avatar, mountainSpawnScrollY is
- *  snapshotted to totalScrollY at that moment. The mountains group
- *  is then positioned at (mountainSpawnScrollY - totalScrollY),
- *  which places them at world-Y ≈ 0 (cloud level) at the instant
- *  they spawn, and they scroll down naturally from there.
- *
- * ── Ground plane (Fix #1) ────────────────────────────────────────
- *  GroundPlane scrolls with totalScrollY (same as bgTreesRef) so it
- *  starts visible at the base and sinks below camera as the avatar
- *  climbs.  As the first cloud bank descends toward the avatar the
- *  plane fades out smoothly, and once the cloud passes through it is
- *  unmounted entirely — matching the same moment the background
- *  mountains and trees regenerate above the clouds.
+ * GLB mountain clones have castShadow/receiveShadow DISABLED to prevent
+ * the harsh self-shadowing texture banding seen when shadows are on.
+ * Only the ground plane and avatar receive/cast shadows.
  */
 
 import { useRef, useState, useMemo } from 'react'
@@ -50,16 +33,30 @@ import {
   CAM_FOV_START,
   CAM_INTRO_SEC,
   CAM_LOOK_START,
+  TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
+  DIRLIGHT_INTENSITY_DAY, DIRLIGHT_INTENSITY_DUSK, DIRLIGHT_INTENSITY_NIGHT,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
 import { GroundPlane } from './GroundPlane'
 import { CelestialBodies } from './SkyScene'
 
+// ── Sun light constants ───────────────────────────────────────────
+// The sun directional light orbits at this radius around world origin.
+// Its XZ position is the OPPOSITE of the sun disc's position in the sky,
+// so shadows fall away from the sun.
+const SUN_LIGHT_RADIUS = 60   // world-units
+const SUN_LIGHT_Y      = 80   // fixed height
+
 // How far above the avatar the cloud starts fading the ground out.
-// When cloudWorldY drops below this value the ground begins to fade.
-const GROUND_FADE_START_Y =  8   // cloud is 8 units above avatar → start fade
-const GROUND_FADE_END_Y   = -2   // cloud is at/past avatar      → fully gone
+const GROUND_FADE_START_Y =  8
+const GROUND_FADE_END_Y   = -2
+
+function localHour(): number {
+  const now = new Date()
+  return now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600
+}
+function wrapHour(h: number) { return ((h % 24) + 24) % 24 }
 
 // ─────────────────────────────────────────────────────────────────
 // Seeded RNG
@@ -74,12 +71,11 @@ function seededRand(seed: number) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Background mountains — remounted on every cloud pass-through
+// Background mountains
 // ─────────────────────────────────────────────────────────────────
 
 function makeMountains(generation: number) {
   const rng = seededRand(generation * 7919 + 1)
-
   const PEAK_PALETTES = [
     [0x2a3f1e, 0x253818, 0x2d4220, 0x1e3012, 0x344a22],
     [0x3a5a2a, 0x4a6a38, 0x508040, 0x2e4a20, 0x5a7048],
@@ -97,7 +93,6 @@ function makeMountains(generation: number) {
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
-
   const midPeaks: [number, number, number, number, number][] = Array.from({ length: 20 }, () => {
     const angle = rng() * Math.PI * 2
     const dist  = 35 + rng() * 35
@@ -106,7 +101,6 @@ function makeMountains(generation: number) {
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
-
   const nearPeaks: [number, number, number, number, number][] = Array.from({ length: 14 }, () => {
     const angle = rng() * Math.PI * 2
     const dist  = 25 + rng() * 18
@@ -115,7 +109,6 @@ function makeMountains(generation: number) {
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
-
   const snowCaps: [number, number, number, number][] = farPeaks
     .filter(([,,, h]) => h > 55)
     .map(([x, z, r, h]) => [x, z, r * 0.3, h * 0.18])
@@ -174,7 +167,7 @@ function BackgroundMountains({ generation }: { generation: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Background trees — permanent, never remounted
+// Background trees
 // ─────────────────────────────────────────────────────────────────
 
 const STATIC_TREE_XZ: [number, number][] = [
@@ -227,25 +220,30 @@ interface MountainWorldProps {
 
 export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
-  // ── Pre-clone all 5 GLB instances upfront to avoid spawn stutter ──
+  // ── GLB clones — castShadow/receiveShadow OFF to prevent texture banding ──
   const { scene } = useGLTF(GLB_PATH)
   const clones = useMemo(() => {
     return Array.from({ length: POOL }, () => {
       const clone = scene.clone(true)
       clone.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          (child as THREE.Mesh).castShadow = true
-          ;(child as THREE.Mesh).receiveShadow = true
+        const mesh = child as THREE.Mesh
+        if (mesh.isMesh) {
+          // Shadows disabled on the mountain GLB — they cause harsh
+          // self-shadow banding on the low-poly geometry. The avatar
+          // and ground plane still cast/receive shadows correctly.
+          mesh.castShadow    = false
+          mesh.receiveShadow = false
         }
       })
       return clone
     })
   }, [scene])
 
-  // scratch vectors — avoids allocating every frame
+  // ── Sun directional light ref — owned here so we can update from totalRot ──
+  const sunLightRef = useRef<THREE.DirectionalLight>(null)
+
   const _camPosLerp  = new THREE.Vector3()
   const _camLookLerp = new THREE.Vector3()
-
   const camProgressRef = useRef(0)
 
   const worldRef       = useRef<THREE.Group>(null)
@@ -253,7 +251,7 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
   const bgTreesRef     = useRef<THREE.Group>(null)
   const avatarRef      = useRef<THREE.Group>(null)
   const cloudRef       = useRef<THREE.Group>(null)
-  const groundRef      = useRef<THREE.Group>(null)   // ← ground plane ref
+  const groundRef      = useRef<THREE.Group>(null)
 
   const ref0 = useRef<THREE.Group>(null)
   const ref1 = useRef<THREE.Group>(null)
@@ -282,16 +280,13 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
   const mountainSpawnScrollY = useRef(0)
 
-  const [secIndices,          setSecIndices]          = useState<[number,number,number,number,number]>([0,1,2,3,4])
+  const [secIndices,           setSecIndices]           = useState<[number,number,number,number,number]>([0,1,2,3,4])
   const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
-
-  // Once this flips to true the ground plane is unmounted
-  const [groundGone, setGroundGone] = useState(false)
+  const [groundGone,           setGroundGone]           = useState(false)
 
   const handleCloudPassThrough = () => {
     mountainSpawnScrollY.current = totalScrollY.current
     setBgMountainGeneration(g => g + 1)
-    // First cloud pass-through → permanently remove the ground plane
     setGroundGone(true)
   }
 
@@ -302,7 +297,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       const dy = CLIMB_SPEED * delta
       totalScrollY.current += dy
       totalRot.current     += ROT_SPEED * delta
-
       for (let i = 0; i < POOL; i++) secY.current[i] -= dy
       cloudY.current -= dy
     }
@@ -320,7 +314,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       bgMountainsRef.current.position.y = mountainSpawnScrollY.current - totalScrollY.current
       bgMountainsRef.current.rotation.y = sharedRotY
     }
-
     if (bgTreesRef.current) {
       bgTreesRef.current.position.y = -(totalScrollY.current % 200)
       bgTreesRef.current.rotation.y = sharedRotY
@@ -328,19 +321,12 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
     // ── Ground plane: scroll + fade ───────────────────────────────
     if (groundRef.current && !groundGone) {
-      // Scroll at the same rate as the background trees
       groundRef.current.position.y = -(totalScrollY.current % 200)
-
-      // Fade out as the cloud bank descends toward the avatar.
-      // cloudY.current is the cloud's current Y in world space (starts high,
-      // counts down toward 0 as the avatar "climbs").
-      const cy     = cloudY.current
-      const fadeT  = 1 - THREE.MathUtils.clamp(
-        (cy - GROUND_FADE_END_Y) / (GROUND_FADE_START_Y - GROUND_FADE_END_Y),
-        0, 1,
+      const cy      = cloudY.current
+      const fadeT   = 1 - THREE.MathUtils.clamp(
+        (cy - GROUND_FADE_END_Y) / (GROUND_FADE_START_Y - GROUND_FADE_END_Y), 0, 1,
       )
-      const opacity = 1 - fadeT   // 1 = fully visible, 0 = invisible
-
+      const opacity = 1 - fadeT
       groundRef.current.traverse((child) => {
         const mesh = child as THREE.Mesh
         if (mesh.isMesh) {
@@ -352,17 +338,50 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       })
     }
 
-    // Position-based section recycling
+    // ── Sun directional light — position tracks world rotation ────
+    // The sun disc in CelestialBodies is at angle = sharedRotY on the
+    // far side of the scene. We place the light at the OPPOSITE XZ angle
+    // so that shadows fall away from the sun regardless of how far the
+    // avatar has rotated around the mountain.
+    if (sunLightRef.current) {
+      const hour = wrapHour(localHour())
+      const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
+      const isDay   = hour >= TIME_DAY_START   && hour < TIME_DUSK_START
+      const isDusk  = hour >= TIME_DUSK_START  && hour < TIME_NIGHT_START
+      const isNight = hour >= TIME_NIGHT_START || hour < TIME_DAWN_START
+
+      const dawnT = isDawn ? (hour - TIME_DAWN_START) / (TIME_DAY_START   - TIME_DAWN_START) : 0
+      const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0
+
+      let dayW: number, duskW: number
+      if (isDay)       { dayW = 1.0;       duskW = 0.0 }
+      else if (isDawn) { dayW = dawnT;     duskW = (1 - dawnT) * 0.6 }
+      else if (isDusk) { dayW = 1 - duskT; duskW = duskT }
+      else             { dayW = 0.0;       duskW = 0.0 }
+
+      const nightW = 1 - Math.max(dayW, duskW)
+
+      sunLightRef.current.intensity =
+        dayW * DIRLIGHT_INTENSITY_DAY + duskW * DIRLIGHT_INTENSITY_DUSK + nightW * DIRLIGHT_INTENSITY_NIGHT
+
+      // Rotate opposite to sharedRotY so it always shines FROM the sun's side
+      const lightAngle = sharedRotY + Math.PI   // opposite side of the world
+      sunLightRef.current.position.set(
+        Math.cos(lightAngle) * SUN_LIGHT_RADIUS,
+        SUN_LIGHT_Y,
+        Math.sin(lightAngle) * SUN_LIGHT_RADIUS,
+      )
+    }
+
+    // Section recycling
     const bot = cursor.current
     if (secY.current[bot] < RECYCLE_THRESHOLD) {
       const top = (cursor.current + POOL - 1) % POOL
       secY.current[bot]   = secY.current[top] + SECTION_HEIGHT
       secIdx.current[bot] = secIdx.current[bot] + POOL
       cursor.current      = (cursor.current + 1) % POOL
-
       spawnCountRef.current += 1
       setSecIndices([...secIdx.current] as [number,number,number,number,number])
-
       if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
         lastCloudSpawn.current = spawnCountRef.current
         cloudY.current = Math.max(...secY.current) + CLOUD_ABOVE_OFFSET
@@ -380,15 +399,12 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     } else {
       camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
     }
-
     const p = camProgressRef.current
     const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
-
     _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
     _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
     camera.position.copy(_camPosLerp)
     camera.lookAt(_camLookLerp)
-
     const cam = camera as THREE.PerspectiveCamera
     const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
     if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
@@ -403,28 +419,42 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
   return (
     <>
+      {/*
+        Sun directional light — owned here so it can read totalRot.
+        castShadow ON, but only affects the ground plane and avatar
+        since GLB meshes have castShadow/receiveShadow = false.
+        Position is updated each frame to orbit opposite to the sun disc.
+      */}
+      <directionalLight
+        ref={sunLightRef}
+        color="#fff8e8"
+        intensity={DIRLIGHT_INTENSITY_DAY}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.001}
+        shadow-camera-near={0.5}
+        shadow-camera-far={150}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
+        shadow-camera-bottom={-20}
+        position={[SUN_LIGHT_RADIUS, SUN_LIGHT_Y, 0]}
+      />
+
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} />
 
-      {/*
-        Ground plane — visible at the mountain base, scrolls down with
-        totalScrollY, fades out as the cloud bank approaches, and is
-        unmounted permanently after the first cloud pass-through.
-        Sits outside worldRef so it isn't affected by section rotation.
-      */}
       {!groundGone && <GroundPlane ref={groundRef} />}
 
-      {/* Mountains + celestial bodies — same group so sun/moon rotate with the world */}
+      {/* Mountains + celestial bodies share bgMountainsRef rotation */}
       <group ref={bgMountainsRef}>
         <BackgroundMountains key={bgMountainGeneration} generation={bgMountainGeneration} />
         <CelestialBodies />
       </group>
 
-      {/* Trees — separate group, permanently scrolling, never remounted */}
       <group ref={bgTreesRef}>
         <BackgroundTrees />
       </group>
 
-      {/* World group — GLB sections + cloud bank rotate and scroll together */}
       <group ref={worldRef}>
         {([ref0, ref1, ref2, ref3, ref4] as const).map((ref, i) => {
           const { rotY, offX } = getSectionTransform(secIndices[i])
@@ -439,7 +469,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
             </group>
           )
         })}
-
         <CloudBank groupRef={cloudRef} onPassThrough={handleCloudPassThrough} />
       </group>
     </>

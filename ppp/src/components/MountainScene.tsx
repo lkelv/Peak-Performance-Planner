@@ -1,9 +1,31 @@
-import { Suspense, useMemo } from 'react'
+/**
+ * MountainScene.tsx
+ *
+ * Top-level canvas wrapper.
+ *
+ * Lighting strategy:
+ *   - A single clean set of lights lives here (ambient + fill + hemi).
+ *   - The sun directional light (castShadow) lives in MountainWorld
+ *     so it can read totalRot each frame and track the sun's position,
+ *     keeping shadows on the opposite side from the sun at all times.
+ *   - No duplicate light sets — the old hardcoded lights are gone.
+ */
+
+import { Suspense, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { CAM_POS, CAM_FOV } from './constants'
-
+import * as THREE from 'three'
+import {
+  TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
+  AMBIENT_INTENSITY_DAY, AMBIENT_INTENSITY_DUSK, AMBIENT_INTENSITY_NIGHT,
+  AMBIENT_COLOR_DAY, AMBIENT_COLOR_DUSK, AMBIENT_COLOR_NIGHT,
+  MOONLIGHT_INTENSITY_NIGHT, MOONLIGHT_COLOR,
+  HEMI_SKY_DAY, HEMI_GND_DAY, HEMI_INT_DAY,
+  HEMI_SKY_DUSK, HEMI_GND_DUSK, HEMI_INT_DUSK,
+  HEMI_SKY_NIGHT, HEMI_GND_NIGHT, HEMI_INT_NIGHT,
+} from './constants'
 
 function localHour(): number {
   const now = new Date()
@@ -14,9 +36,12 @@ function wrapHour(h: number): number {
   return ((h % 24) + 24) % 24
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Ambient + fill + hemisphere lights — no shadow casting here.
+// The sun directional (castShadow) is owned by MountainWorld.
+// ─────────────────────────────────────────────────────────────────
 function DynamicLights() {
   const ambientRef   = useRef<THREE.AmbientLight>(null)
-  const sunLightRef  = useRef<THREE.DirectionalLight>(null)
   const fillLightRef = useRef<THREE.DirectionalLight>(null)
   const moonLightRef = useRef<THREE.DirectionalLight>(null)
   const hemiRef      = useRef<THREE.HemisphereLight>(null)
@@ -38,10 +63,10 @@ function DynamicLights() {
     const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0
 
     let dayW: number, duskW: number
-    if (isDay)       { dayW = 1.0;       duskW = 0.0  }
+    if (isDay)       { dayW = 1.0;       duskW = 0.0 }
     else if (isDawn) { dayW = dawnT;     duskW = (1 - dawnT) * 0.6 }
     else if (isDusk) { dayW = 1 - duskT; duskW = duskT }
-    else             { dayW = 0.0;       duskW = 0.0  }
+    else             { dayW = 0.0;       duskW = 0.0 }
 
     const nightW = 1 - Math.max(dayW, duskW)
 
@@ -55,11 +80,6 @@ function DynamicLights() {
       ambientRef.current.color.copy(_ambColor)
     }
 
-    if (sunLightRef.current) {
-      sunLightRef.current.intensity =
-        dayW * DIRLIGHT_INTENSITY_DAY + duskW * DIRLIGHT_INTENSITY_DUSK + nightW * DIRLIGHT_INTENSITY_NIGHT
-    }
-
     if (moonLightRef.current) {
       moonLightRef.current.intensity = nightW * MOONLIGHT_INTENSITY_NIGHT
     }
@@ -67,7 +87,6 @@ function DynamicLights() {
     if (hemiRef.current) {
       hemiRef.current.intensity =
         dayW * HEMI_INT_DAY + duskW * HEMI_INT_DUSK + nightW * HEMI_INT_NIGHT
-
       _hemiSky
         .set(HEMI_SKY_DAY).multiplyScalar(dayW)
         .add(_scratch.set(HEMI_SKY_DUSK).multiplyScalar(duskW))
@@ -76,7 +95,6 @@ function DynamicLights() {
         .set(HEMI_GND_DAY).multiplyScalar(dayW)
         .add(_scratch.set(HEMI_GND_DUSK).multiplyScalar(duskW))
         .add(_scratch.set(HEMI_GND_NIGHT).multiplyScalar(nightW))
-
       hemiRef.current.color.copy(_hemiSky)
       hemiRef.current.groundColor.copy(_hemiGnd)
     }
@@ -84,74 +102,80 @@ function DynamicLights() {
 
   return (
     <>
+      {/* Ambient — colour + intensity tracks time of day */}
       <ambientLight ref={ambientRef} color={AMBIENT_COLOR_DAY} intensity={AMBIENT_INTENSITY_DAY} />
-      <directionalLight
-        ref={sunLightRef}
-        position={[40, 80, 30]}
-        color="#fff8e8"
-        intensity={DIRLIGHT_INTENSITY_DAY}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0005}
-        shadow-radius={5}
-        shadow-camera-near={0.1}
-        shadow-camera-far={200}
-        shadow-camera-left={-25}
-        shadow-camera-right={25}
-        shadow-camera-top={25}
-        shadow-camera-bottom={-25}
-      />
-      <directionalLight ref={fillLightRef} position={[-20, 20, -10]} intensity={0.6} color="#c8d8f0" />
+
+      {/* Cool fill from the opposite side — no shadows, just prevents pure black faces */}
+      <directionalLight ref={fillLightRef} position={[-20, 20, -10]} intensity={0.4} color="#c8d8f0" />
+
+      {/* Moonlight fill — only active at night */}
       <directionalLight ref={moonLightRef} position={[-40, 60, -30]} color={MOONLIGHT_COLOR} intensity={0} />
+
+      {/* Hemisphere — sky/ground colour tracks time of day */}
       <hemisphereLight ref={hemiRef} args={[HEMI_SKY_DAY, HEMI_GND_DAY, HEMI_INT_DAY]} />
     </>
   )
 }
 
-interface MountainSceneProps {
-    height?:     number
-    isClimbing?: boolean
-    viewMode?:   'wide' | 'close'
+// ─────────────────────────────────────────────────────────────────
+// Camera controller
+// ─────────────────────────────────────────────────────────────────
+function CameraController({ viewMode }: { viewMode: 'wide' | 'close' }) {
+  const { camera } = useThree()
+  const closePos = useMemo(() => CAM_POS.clone(), [])
+  const widePos  = useMemo(() => new THREE.Vector3(closePos.x + 15, closePos.y + 10, closePos.z + 25), [closePos])
+
+  useFrame((_state, delta) => {
+    const targetPos = viewMode === 'wide' ? widePos : closePos
+    camera.position.lerp(targetPos, delta * 2.5)
+  })
+  return null
 }
 
-function CameraController({ viewMode }: { viewMode: 'wide' | 'close' }) {
-    const { camera } = useThree()
-    const closePos = useMemo(() => CAM_POS.clone(), [])
-    const widePos = useMemo(() => new THREE.Vector3(closePos.x + 15, closePos.y + 10, closePos.z + 25), [closePos])
-
-    useFrame((_state, delta) => {
-        const targetPos = viewMode === 'wide' ? widePos : closePos;
-        camera.position.lerp(targetPos, delta * 2.5);
-    })
-    return null;
+// ─────────────────────────────────────────────────────────────────
+// MountainScene
+// ─────────────────────────────────────────────────────────────────
+interface MountainSceneProps {
+  height?:    number
+  isClimbing?: boolean
+  viewMode?:  'wide' | 'close'
 }
 
 export default function MountainScene({
-                                          height     = window.innerHeight,
-                                          isClimbing = true,
-                                          viewMode   = 'close'
-                                      }: MountainSceneProps) {
-    return (
-        <div style={{ width: '100%', height, position: 'relative' }}>
-            <Canvas
-                shadows
-                camera={{
-                    position: viewMode === 'wide' ? [45, 25, 55] : (CAM_POS.toArray() as [number, number, number]),
-                    fov: CAM_FOV,
-                    near: 0.05,
-                    far: 600,
-                }}
-            >
-                <CameraController viewMode={viewMode} />
-                <ambientLight color="#c8ddf0" intensity={1.8} />
-                <directionalLight position={[40, 80, 30]} color="#fff8e8" intensity={3.5} castShadow />
-                <directionalLight position={[-20, 20, -10]} intensity={0.6} color="#c8d8f0" />
-                <hemisphereLight args={['#aad4f5', '#4a7a30', 0.9]} />
-                <SkyScene />
-                <Suspense fallback={null}>
-                    <MountainWorld isClimbing={isClimbing} />
-                </Suspense>
-            </Canvas>
-        </div>
-    )
+  height     = window.innerHeight,
+  isClimbing = true,
+  viewMode   = 'close',
+}: MountainSceneProps) {
+  return (
+    <div style={{ width: '100%', height, position: 'relative' }}>
+      <Canvas
+        shadows
+        camera={{
+          position: viewMode === 'wide'
+            ? [45, 25, 55]
+            : (CAM_POS.toArray() as [number, number, number]),
+          fov: CAM_FOV,
+          near: 0.05,
+          far: 600,
+        }}
+      >
+        <CameraController viewMode={viewMode} />
+
+        {/* Ambient + fill + hemisphere — no shadow casting */}
+        <DynamicLights />
+
+        {/* Sky dome */}
+        <SkyScene />
+
+        {/*
+          MountainWorld owns the sun directional light (castShadow).
+          It updates the light position each frame based on totalRot
+          so the shadow always falls opposite the sun.
+        */}
+        <Suspense fallback={null}>
+          <MountainWorld isClimbing={isClimbing} />
+        </Suspense>
+      </Canvas>
+    </div>
+  )
 }
