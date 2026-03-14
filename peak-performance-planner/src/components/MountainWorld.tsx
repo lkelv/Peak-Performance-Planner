@@ -2,22 +2,22 @@
  * MountainWorld.tsx
  *
  * ── Mountain sections ────────────────────────────────────────────
- *  5 GLB slots in a circular buffer. Recycling is POSITION-BASED:
- *  as soon as the bottom slot's Y drops below RECYCLE_THRESHOLD
- *  (halfway between the player and off-screen), it teleports to the
- *  top — guaranteeing a fresh section is always well ahead of the
- *  player before they can see the edge.
+ *  5 GLB slots in a circular buffer. Position-based recycling:
+ *  the bottom slot teleports to the top once it drops below
+ *  RECYCLE_THRESHOLD.
  *
- * ── Background scrolling ────────────────────────────────────────
- *  bgRef lives OUTSIDE worldRef. Each frame we mirror worldRef's
- *  rotation AND apply the same Y translation so trees/mountains
- *  scroll at identical speed. bgGeneration key remounts scenery
- *  after each cloud passage.
+ * ── Background scrolling ─────────────────────────────────────────
+ *  Mountains and trees live in SEPARATE groups so they can be
+ *  positioned independently.
  *
- * ── Cloud bank ──────────────────────────────────────────────────
- *  cloudRef travels DOWN at CLIMB_SPEED like a mountain section.
- *  It resets above the top section every CLOUD_SPAWN_INTERVAL recycles.
- *  Passing through it swaps the background scenery generation.
+ * ── Cloud bank + mountain respawn ────────────────────────────────
+ *  When the cloud passes the avatar, mountainSpawnScrollY is
+ *  snapshotted to totalScrollY at that moment. The mountains group
+ *  is then positioned at (mountainSpawnScrollY - totalScrollY),
+ *  which places them at world-Y ≈ 0 (cloud level) at the instant
+ *  they spawn, and they scroll down naturally from there — no
+ *  modulo wrap, no teleport. Trees are permanently modulo-scrolled
+ *  and never remounted.
  */
 
 import { useRef, useState } from 'react'
@@ -39,15 +39,23 @@ import { CloudBank } from './CloudBank'
 import { MountainSection } from './MountainHalf'
 
 // ─────────────────────────────────────────────────────────────────
-// Background scenery — randomised per generation
+// Seeded RNG
 // ─────────────────────────────────────────────────────────────────
 
 function seededRand(seed: number) {
   let s = seed
-  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff }
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff
+    return (s >>> 0) / 0xffffffff
+  }
 }
 
-function makeScenery(generation: number) {
+// ─────────────────────────────────────────────────────────────────
+// Background mountains — remounted on every cloud pass-through,
+// spawning at cloud level and scrolling down from there
+// ─────────────────────────────────────────────────────────────────
+
+function makeMountains(generation: number) {
   const rng = seededRand(generation * 7919 + 1)
 
   const PEAK_PALETTES = [
@@ -59,80 +67,45 @@ function makeScenery(generation: number) {
   ]
   const palette = PEAK_PALETTES[generation % PEAK_PALETTES.length]
 
-  // ── Far background ring (large, distant peaks) ──
   const farPeaks: [number, number, number, number, number][] = Array.from({ length: 20 }, () => {
     const angle = rng() * Math.PI * 2
-    const dist  = 70 + rng() * 60   // 70-130 units out
+    const dist  = 70 + rng() * 60
     const r     = 14 + rng() * 20
     const h     = 35 + rng() * 50
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
 
-  // ── Mid ring (medium peaks, mid distance) ──
   const midPeaks: [number, number, number, number, number][] = Array.from({ length: 20 }, () => {
     const angle = rng() * Math.PI * 2
-    const dist  = 35 + rng() * 35   // 35-70 units out
+    const dist  = 35 + rng() * 35
     const r     = 9 + rng() * 14
     const h     = 20 + rng() * 35
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
 
-  // ── Near ring (small hills, close) ──
   const nearPeaks: [number, number, number, number, number][] = Array.from({ length: 14 }, () => {
     const angle = rng() * Math.PI * 2
-    const dist  = 25 + rng() * 18   // 20-38 units out
+    const dist  = 25 + rng() * 18
     const r     = 5 + rng() * 8
     const h     = 10 + rng() * 18
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
 
-  // ── Snow-capped tops for taller far peaks ──
   const snowCaps: [number, number, number, number][] = farPeaks
-    .filter(([,, , h]) => h > 55)
+    .filter(([,,, h]) => h > 55)
     .map(([x, z, r, h]) => [x, z, r * 0.3, h * 0.18])
 
-  // ── Trees: dense forest ring ──
-  const TREE_COLS_BY_GEN = [
-    ['#2a5a1a', '#2f6a20', '#336620', '#3a7226', '#1e4a12'],
-    ['#3a6a2a', '#4a7a38', '#508040', '#2e5a20', '#6a8050'],
-    ['#5a6a4a', '#6a7a58', '#7a8a68', '#4a5a3a', '#8a9a78'],
-    ['#7a8a8a', '#8a9a9a', '#9aaaaa', '#6a7a7a', '#aababa'],
-    ['#8a9aaa', '#9aaacc', '#aabbd0', '#7a8a9a', '#bbccdd'],
-  ]
-  const treeCols = TREE_COLS_BY_GEN[generation % TREE_COLS_BY_GEN.length]
-
-  // Inner cluster (close to mountain base)
-  const innerTrees: [number, number, string][] = Array.from({ length: 28 }, (_, i) => {
-    const angle = rng() * Math.PI * 2
-    const dist  = 4 + rng() * 14
-    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
-  })
-
-  // Mid-range forest
-  const midTrees: [number, number, string][] = Array.from({ length: 30 }, (_, i) => {
-    const angle = rng() * Math.PI * 2
-    const dist  = 14 + rng() * 20
-    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
-  })
-
-  // Distant sparse trees
-  const farTrees: [number, number, string][] = Array.from({ length: 20 }, (_, i) => {
-    const angle = rng() * Math.PI * 2
-    const dist  = 34 + rng() * 22
-    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
-  })
-
-  return { farPeaks, midPeaks, nearPeaks, snowCaps, trees: [...innerTrees, ...midTrees, ...farTrees] }
+  return { farPeaks, midPeaks, nearPeaks, snowCaps }
 }
 
-function BackgroundScenery({ generation }: { generation: number }) {
-  const { farPeaks, midPeaks, nearPeaks, snowCaps, trees } = makeScenery(generation)
+function BackgroundMountains({ generation }: { generation: number }) {
+  const { farPeaks, midPeaks, nearPeaks, snowCaps } = makeMountains(generation)
+  const tallFar = farPeaks.filter(([,,, h]) => h > 55)
   return (
     <>
-      {/* Far peaks — largest, most distant */}
       {farPeaks.map(([x, z, r, h, color], i) => (
         <mesh key={`fp${i}`} position={[x, h / 2, z]}>
           <coneGeometry args={[r, h, 7]} />
@@ -140,15 +113,13 @@ function BackgroundScenery({ generation }: { generation: number }) {
         </mesh>
       ))}
 
-      {/* Snow caps on tall far peaks */}
       {snowCaps.map(([x, z, r, h], i) => (
-        <mesh key={`sc${i}`} position={[x, farPeaks.filter(([,,,fh]) => fh > 55)[i][3] - h * 0.5, z]}>
+        <mesh key={`sc${i}`} position={[x, tallFar[i][3] - h * 0.5, z]}>
           <coneGeometry args={[r, h * 2, 7]} />
           <meshPhongMaterial color={0xeef4ff} flatShading />
         </mesh>
       ))}
 
-      {/* Mid peaks */}
       {midPeaks.map(([x, z, r, h, color], i) => (
         <mesh key={`mp${i}`} position={[x, h / 2, z]}>
           <coneGeometry args={[r, h, 7]} />
@@ -156,28 +127,46 @@ function BackgroundScenery({ generation }: { generation: number }) {
         </mesh>
       ))}
 
-      {/* Near hills */}
       {nearPeaks.map(([x, z, r, h, color], i) => (
         <mesh key={`np${i}`} position={[x, h / 2, z]}>
           <coneGeometry args={[r, h, 6]} />
           <meshPhongMaterial color={color} flatShading />
         </mesh>
       ))}
+    </>
+  )
+}
 
-      {/* Trees */}
-      {trees.map(([x, z, col], i) => {
+// ─────────────────────────────────────────────────────────────────
+// Background trees — permanent, never remounted
+// ─────────────────────────────────────────────────────────────────
+
+const STATIC_TREE_XZ: [number, number][] = [
+  [-7,3],[-9,0],[-6,-3],[-10,-6],[-7,-10],[-4,-13],
+  [7,2],[9,-1],[7,-4],[10,-7],[6,-11],[4,-14],
+  [-2,-16],[2,-17],[0,-19],[-12,1],[12,0],
+  [-11,-9],[11,-10],[0,-21],[-14,-3],[14,-4],
+  [-5,-20],[5,-21],[-8,-14],[8,-15],
+  [-16,4],[16,3],[-13,-13],[13,-14],
+  [-3,5],[4,6],[-18,-5],[18,-6],
+]
+
+function BackgroundTrees() {
+  return (
+    <>
+      {STATIC_TREE_XZ.map(([x, z], i) => {
         const s = 0.7 + (i * 0.031) % 0.7
         return (
-          <group key={`t${i}`} position={[x, 0, z]}>
+          <group key={i} position={[x, 0, z]}>
             <mesh position={[0, 0.2 * s, 0]}>
               <cylinderGeometry args={[0.06 * s, 0.10 * s, 0.45 * s, 5]} />
               <meshPhongMaterial color="#5a3a10" />
             </mesh>
             {([
-              [0.72, 0.38],
-              [0.50, 0.95],
-              [0.28, 1.52],
-            ] as [number, number][]).map(([sc, yMult], ti) => (
+              [0.72, 0.38, '#2a5a1a'],
+              [0.50, 0.95, '#336620'],
+              [0.28, 1.52, '#3a7226'],
+            ] as [number, number, string][]).map(([sc, yMult, col], ti) => (
               <mesh key={ti} position={[0, yMult * s, 0]}>
                 <coneGeometry args={[sc * s, 0.75 * s, 6]} />
                 <meshPhongMaterial color={col} flatShading />
@@ -191,26 +180,22 @@ function BackgroundScenery({ generation }: { generation: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Component
+// Main component
 // ─────────────────────────────────────────────────────────────────
 
-const POOL = 5  // circular buffer size
+const POOL = 5
 
 interface MountainWorldProps {
-  isClimbing?:      boolean
-  onSectionChange?: (index: number) => void
+  isClimbing?: boolean
 }
 
-export function MountainWorld({
-  isClimbing      = true,
-  onSectionChange,
-}: MountainWorldProps) {
+export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
-  // ── Refs ───────────────────────────────────────────────────────
-  const worldRef  = useRef<THREE.Group>(null)
-  const bgRef     = useRef<THREE.Group>(null)
-  const avatarRef = useRef<THREE.Group>(null)
-  const cloudRef  = useRef<THREE.Group>(null)
+  const worldRef       = useRef<THREE.Group>(null)
+  const bgMountainsRef = useRef<THREE.Group>(null)  // remounted on cloud pass
+  const bgTreesRef     = useRef<THREE.Group>(null)  // permanent
+  const avatarRef      = useRef<THREE.Group>(null)
+  const cloudRef       = useRef<THREE.Group>(null)
 
   const ref0 = useRef<THREE.Group>(null)
   const ref1 = useRef<THREE.Group>(null)
@@ -219,37 +204,40 @@ export function MountainWorld({
   const ref4 = useRef<THREE.Group>(null)
   const REFS = [ref0, ref1, ref2, ref3, ref4] as const
 
-  // Initial Y positions: -2H, -H, 0, +H, +2H
-  const secY = useRef<[number,number,number,number,number]>([
+  const secY = useRef<[number, number, number, number, number]>([
     -SECTION_HEIGHT * 2,
     -SECTION_HEIGHT,
      0,
      SECTION_HEIGHT,
      SECTION_HEIGHT * 2,
   ])
-  const secIdx = useRef<[number,number,number,number,number]>([0, 1, 2, 3, 4])
-  // cursor always points to the slot with the LOWEST current Y
-  const cursor = useRef(0)
+  const secIdx  = useRef<[number, number, number, number, number]>([0, 1, 2, 3, 4])
+  const cursor  = useRef(0)
 
-  // ── Cloud ──────────────────────────────────────────────────────
   const cloudY         = useRef(CLOUD_ABOVE_OFFSET)
   const spawnCountRef  = useRef(0)
   const lastCloudSpawn = useRef(0)
 
-  // ── Scroll tracking ───────────────────────────────────────────
   const totalScrollY = useRef(0)
   const totalRot     = useRef(0)
   const frameRef     = useRef(0)
-  const sectionNum   = useRef(0)
 
-  // ── React state ────────────────────────────────────────────────
-  const [secIndices, setSecIndices] = useState<[number,number,number,number,number]>([0,1,2,3,4])
-  const [bgGeneration, setBgGeneration] = useState(0)
+  // Snapshot of totalScrollY at the moment each mountain set spawned.
+  // Mountains are positioned at (mountainSpawnScrollY - totalScrollY),
+  // placing them at world-Y ≈ 0 (cloud level) on spawn, then scrolling
+  // down naturally — no modulo, no teleport.
+  const mountainSpawnScrollY = useRef(0)
 
-  // When the cloud fully passes the avatar, swap background scenery
-  const handleCloudPassThrough = () => setBgGeneration(g => g + 1)
+  const [secIndices, setSecIndices]                     = useState<[number, number, number, number, number]>([0, 1, 2, 3, 4])
+  const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
 
-  // ── Frame loop ─────────────────────────────────────────────────
+  const handleCloudPassThrough = () => {
+    // Lock in the current scroll position as the spawn baseline so the
+    // new mountains appear right at cloud level the frame they mount.
+    mountainSpawnScrollY.current = totalScrollY.current
+    setBgMountainGeneration(g => g + 1)
+  }
+
   useFrame(({ camera }, delta) => {
     frameRef.current++
 
@@ -262,46 +250,47 @@ export function MountainWorld({
       cloudY.current -= dy
     }
 
-    // Apply Y to mountain sections
     for (let i = 0; i < POOL; i++) {
       const g = REFS[i].current
       if (g) g.position.y = secY.current[i]
     }
 
-    // Apply Y to cloud — also inherits worldRef rotation via parent group
     if (cloudRef.current) cloudRef.current.position.y = cloudY.current
 
-    // Background mirrors world rotation + translation
-    if (bgRef.current) {
-      bgRef.current.position.y = -(totalScrollY.current % 200)
-      bgRef.current.rotation.y = ROTATION_DIR * totalRot.current
+    const sharedRotY = ROTATION_DIR * totalRot.current
+
+    // Mountains: anchored to spawn baseline, scroll down from cloud level.
+    if (bgMountainsRef.current) {
+      bgMountainsRef.current.position.y = mountainSpawnScrollY.current - totalScrollY.current
+      bgMountainsRef.current.rotation.y = sharedRotY
     }
 
-    // ── Position-based recycling ────────────────────────────────
+    // Trees: simple modulo scroll, permanently near the base.
+    if (bgTreesRef.current) {
+      bgTreesRef.current.position.y = -(totalScrollY.current % 200)
+      bgTreesRef.current.rotation.y = sharedRotY
+    }
+
+    // Position-based section recycling
     const bot = cursor.current
     if (secY.current[bot] < RECYCLE_THRESHOLD) {
       const top = (cursor.current + POOL - 1) % POOL
-      secY.current[bot] = secY.current[top] + SECTION_HEIGHT
+      secY.current[bot]   = secY.current[top] + SECTION_HEIGHT
       secIdx.current[bot] = secIdx.current[bot] + POOL
-      cursor.current = (cursor.current + 1) % POOL
+      cursor.current      = (cursor.current + 1) % POOL
 
-      sectionNum.current += 1
       spawnCountRef.current += 1
-      onSectionChange?.(sectionNum.current)
+      setSecIndices([...secIdx.current] as [number, number, number, number, number])
 
-      setSecIndices([...secIdx.current] as [number,number,number,number,number])
-
-      // Reset cloud above top every CLOUD_SPAWN_INTERVAL recycles
       if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
         lastCloudSpawn.current = spawnCountRef.current
         cloudY.current = Math.max(...secY.current) + CLOUD_ABOVE_OFFSET
       }
     }
 
-    // Rotate world group
     if (worldRef.current) {
       worldRef.current.position.set(WORLD_OFFSET_X, WORLD_OFFSET_Y, WORLD_OFFSET_Z)
-      worldRef.current.rotation.y = ROTATION_DIR * totalRot.current
+      worldRef.current.rotation.y = sharedRotY
     }
 
     // Leg bob
@@ -311,7 +300,6 @@ export function MountainWorld({
       ;(avatarRef.current.children[1] as THREE.Mesh).position.y = 0.08 - bob
     }
 
-    // Hard-pin camera
     camera.position.copy(CAM_POS)
     camera.lookAt(CAM_LOOK)
     const cam = camera as THREE.PerspectiveCamera
@@ -322,12 +310,17 @@ export function MountainWorld({
     <>
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} />
 
-      {/* Background — lives outside worldRef, mirrors rotation only */}
-      <group ref={bgRef}>
-        <BackgroundScenery key={bgGeneration} generation={bgGeneration} />
+      {/* Mountains — separate group, repositioned to cloud Y on each remount */}
+      <group ref={bgMountainsRef}>
+        <BackgroundMountains key={bgMountainGeneration} generation={bgMountainGeneration} />
       </group>
 
-      {/* World group — mountain sections + cloud bank all rotate together */}
+      {/* Trees — separate group, permanently scrolling, never remounted */}
+      <group ref={bgTreesRef}>
+        <BackgroundTrees />
+      </group>
+
+      {/* World group — GLB sections + cloud bank rotate together */}
       <group ref={worldRef}>
         <MountainSection groupRef={ref0} sectionIndex={secIndices[0]} />
         <MountainSection groupRef={ref1} sectionIndex={secIndices[1]} />
@@ -335,7 +328,6 @@ export function MountainWorld({
         <MountainSection groupRef={ref3} sectionIndex={secIndices[3]} />
         <MountainSection groupRef={ref4} sectionIndex={secIndices[4]} />
 
-        {/* Cloud bank travels down + rotates with worldRef */}
         <CloudBank groupRef={cloudRef} onPassThrough={handleCloudPassThrough} />
       </group>
     </>

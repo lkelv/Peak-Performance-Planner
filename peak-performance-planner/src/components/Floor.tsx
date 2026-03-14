@@ -1,10 +1,12 @@
+/**
+ * Floor.tsx
+ * Terrain ribbon, path, flags, background mountains, and trees.
+ * Used by World.tsx (legacy). Cloud bank is managed by MountainWorld directly.
+ */
+
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { makeCurve, FLOOR_HEIGHT, CLOUD_T } from './constants'
 import { buildTerrainGeo } from './buildTerrainGeo'
-import { CloudBank } from './CloudBank'
-
-// ── Static layout data ────────────────────────────────────────────
 
 const BG_PEAKS = [
   [-55, -45, 22, 46, 0x2a3f1e],
@@ -35,8 +37,6 @@ const TREE_XZ: [number, number][] = [
 ]
 
 const FLAG_TS = [0.22, 0.44, 0.66, 0.95]
-
-// ── Sub-components ────────────────────────────────────────────────
 
 function Flags({ curve }: { curve: THREE.CatmullRomCurve3 }) {
   return (
@@ -106,37 +106,22 @@ function Trees() {
   )
 }
 
-// ── Main Floor ────────────────────────────────────────────────────
-
 interface FloorProps {
-  localY: number
-  cloudT: number
-  scrolledYRef: React.RefObject<number>
-  isCurrentFloor: boolean
+  localY:  number
+  curve:   THREE.CatmullRomCurve3
 }
 
-/**
- * One floor — terrain, path, flags, trees, bg mountains, cloud portal.
- * Always built at y=0 geometry, positioned via localY group offset.
- * isCurrentFloor=true  → cloud bank fades based on proximity
- * isCurrentFloor=false → cloud bank starts invisible (it's the next floor)
- */
-export function Floor({ localY, cloudT, scrolledYRef, isCurrentFloor }: FloorProps) {
-  const curve      = useMemo(() => makeCurve(), [])
+export function Floor({ localY, curve }: FloorProps) {
   const terrainGeo = useMemo(() => buildTerrainGeo(), [])
   const pathGeo    = useMemo(() => new THREE.TubeGeometry(curve, 260, 0.14, 7, false), [curve])
   const glowGeo    = useMemo(() => new THREE.TubeGeometry(curve, 260, 0.22, 7, false), [curve])
 
-  const cloudLocalY = cloudT * FLOOR_HEIGHT
-
   return (
     <group position={[0, localY, 0]}>
-      {/* Terrain ribbon */}
       <mesh geometry={terrainGeo} castShadow receiveShadow>
         <meshPhongMaterial vertexColors side={THREE.DoubleSide} shininess={8} />
       </mesh>
 
-      {/* Path */}
       <mesh geometry={pathGeo}>
         <meshPhongMaterial color="#c8a050" shininess={14} />
       </mesh>
@@ -144,19 +129,9 @@ export function Floor({ localY, cloudT, scrolledYRef, isCurrentFloor }: FloorPro
         <meshBasicMaterial color="#f0b050" transparent opacity={0.09} />
       </mesh>
 
-      {/* No ground disc — cloud bank is the visual separator */}
-
       <Flags curve={curve} />
       <BackgroundMountains />
       <Trees />
-
-      {/* Cloud portal — only active on current floor */}
-      <CloudBank
-        localY={cloudLocalY}
-        scrolledYRef={scrolledYRef}
-        isCurrentFloor={isCurrentFloor}
-        cloudT={cloudT}
-      />
     </group>
   )
 }

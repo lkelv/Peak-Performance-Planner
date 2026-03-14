@@ -2,17 +2,13 @@
  * CloudBank.tsx
  *
  * Dense cloud wall that travels down with the mountain sections.
- *
- * Approach (inspired by reference): each puff has its opacity baked at
- * creation time — no per-frame material animation. The group simply
- * exists in world space at whatever Y the parent sets each frame.
- * onPassThrough() fires once when the group's world-Y crosses 0
- * (avatar centre), triggering the background scenery swap.
+ * Each puff has its opacity baked at creation — no per-frame material
+ * animation. The group Y is set by the parent (MountainWorld) every frame.
+ * onPassThrough() fires once when the group crosses world-Y = 0 (avatar).
  */
 
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
 
 interface Puff {
   pos:     [number, number, number]
@@ -23,9 +19,7 @@ interface Puff {
 }
 
 interface CloudBankProps {
-  /** Parent sets position.y on this ref every frame */
   groupRef:       React.RefObject<THREE.Group | null>
-  /** Fires once when the cloud centre crosses the avatar (group.position.y crosses 0) */
   onPassThrough?: () => void
 }
 
@@ -33,7 +27,6 @@ export function CloudBank({ groupRef, onPassThrough }: CloudBankProps) {
   const passedRef = useRef(false)
   const prevY     = useRef<number | null>(null)
 
-  // ── Build puffs once with baked opacity ──────────────────────
   const puffs = useMemo<Puff[]>(() => {
     const arr: Puff[] = []
 
@@ -42,10 +35,10 @@ export function CloudBank({ groupRef, onPassThrough }: CloudBankProps) {
       const angle = Math.random() * Math.PI * 2
       const rad   = Math.random() * 20
       arr.push({
-        pos:     [Math.cos(angle) * rad, (Math.random()*0.05 - 0.5), Math.sin(angle) * rad],
+        pos:     [Math.cos(angle) * rad, Math.random() * 0.05 - 0.5, Math.sin(angle) * rad],
         r:       5 + Math.random() * 8,
         scaleY:  0.20 + Math.random() * 0.2,
-        opacity: 0.82 + Math.random() * 0.16,   // 0.82 – 0.98
+        opacity: 0.82 + Math.random() * 0.16,
         color:   Math.random() > 0.5 ? '#e8eeff' : '#d8e4f8',
       })
     }
@@ -55,10 +48,10 @@ export function CloudBank({ groupRef, onPassThrough }: CloudBankProps) {
       const angle = Math.random() * Math.PI * 2
       const rad   = 20 + Math.random() * 16
       arr.push({
-        pos:     [Math.cos(angle) * rad, (Math.random()*0.05 - 0.5), Math.sin(angle) * rad],
+        pos:     [Math.cos(angle) * rad, Math.random() * 0.05 - 0.5, Math.sin(angle) * rad],
         r:       4 + Math.random() * 3,
         scaleY:  0.25 + Math.random() * 0.10,
-        opacity: 0.70 + Math.random() * 0.22,   // 0.70 – 0.92
+        opacity: 0.70 + Math.random() * 0.22,
         color:   Math.random() > 0.5 ? '#dde8ff' : '#ccd8f0',
       })
     }
@@ -68,24 +61,23 @@ export function CloudBank({ groupRef, onPassThrough }: CloudBankProps) {
       const angle = Math.random() * Math.PI * 2
       const rad   = 36 + Math.random() * 26
       arr.push({
-        pos:     [Math.cos(angle) * rad, (Math.random()*0.05 - 0.5), Math.sin(angle) * rad],
+        pos:     [Math.cos(angle) * rad, Math.random() * 0.05 - 0.5, Math.sin(angle) * rad],
         r:       3 + Math.random() * 3,
-        scaleY:  0.1 + Math.random() * 0.12,
-        opacity: 0.28 + Math.random() * 0.30,   // 0.28 – 0.58
+        scaleY:  0.10 + Math.random() * 0.12,
+        opacity: 0.28 + Math.random() * 0.30,
         color:   '#ccd8ee',
       })
     }
 
-    // Vertical column stuffers — fill top & bottom of the core wall
+    // Column stuffers — fill top & bottom edge of the wall
     for (let i = 0; i < 10; i++) {
       const angle = Math.random() * Math.PI * 2
       const rad   = Math.random() * 18
-      const ySign = Math.random() > 0.5 ? 1 : -1
       arr.push({
         pos:     [Math.cos(angle) * rad, Math.random(), Math.sin(angle) * rad],
         r:       4 + Math.random() * 3,
-        scaleY:  0.3 + Math.random() * 0.10,
-        opacity: 0.75 + Math.random() * 0.20,   // 0.75 – 0.95
+        scaleY:  0.30 + Math.random() * 0.10,
+        opacity: 0.75 + Math.random() * 0.20,
         color:   '#e0eaff',
       })
     }
@@ -93,24 +85,28 @@ export function CloudBank({ groupRef, onPassThrough }: CloudBankProps) {
     return arr
   }, [])
 
-  // ── Only job in useFrame: detect pass-through and fire callback ─
   useFrame(() => {
     const group = groupRef.current
     if (!group) return
 
     const cloudWorldY = group.position.y
-
-    // group.position.y > 0 → cloud is above avatar (still approaching)
-    // group.position.y ≤ 0 → cloud has passed the avatar
     const py = prevY.current
-    if (py !== null && py > 0 && cloudWorldY <= 0 && !passedRef.current) {
+
+    // Fire when the cloud centre is 4 units past the avatar (still mid-whiteout)
+    // rather than the moment it crosses 0, so the swap happens while the screen
+    // is fully covered and the new mountains are hidden behind the cloud wall.
+    if (py !== null && py > -4 && cloudWorldY <= -4 && !passedRef.current) {
       passedRef.current = true
       onPassThrough?.()
     }
-    // Reset flag once the cloud is well above (ready for next cycle)
-    if (cloudWorldY < -200) {
+
+    // Reset once the cloud is well above the avatar again (positive Y = above).
+    // A small positive threshold means the flag clears as soon as the cloud
+    // has been recycled back to the top, ready for the next pass.
+    if (cloudWorldY > 10) {
       passedRef.current = false
     }
+
     prevY.current = cloudWorldY
   })
 

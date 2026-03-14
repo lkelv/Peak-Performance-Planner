@@ -1,34 +1,29 @@
 /**
  * MountainScene.tsx
  *
- * Top-level canvas wrapper.  Drop-in replacement for the original.
+ * Top-level canvas wrapper.
  * Passes isClimbing down to MountainWorld to start/stop the scroll.
  *
  * Usage:
  *   <MountainScene goalName="Complete Semester 1" isClimbing={timerRunning} />
  */
 
-import { useState, Suspense } from 'react'
+import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
-import { HUD } from './HUD'
 import { CAM_POS, CAM_FOV } from './constants'
 
 interface MountainSceneProps {
-  goalName?:   string
   height?:     number
   /** false = avatar idles, world stops scrolling */
   isClimbing?: boolean
 }
 
 export default function MountainScene({
-  goalName   = 'Complete Semester 1',
   height     = 600,
   isClimbing = true,
 }: MountainSceneProps) {
-  const [section, setSection] = useState(1)
-
   return (
     <div style={{ width: '100%', height, position: 'relative' }}>
       <Canvas
@@ -53,14 +48,9 @@ export default function MountainScene({
         <SkyScene />
 
         <Suspense fallback={null}>
-          <MountainWorld
-            isClimbing={isClimbing}
-            onSectionChange={setSection}
-          />
+          <MountainWorld isClimbing={isClimbing} />
         </Suspense>
       </Canvas>
-
-      <HUD goalName={goalName} floor={section} />
     </div>
   )
 }
