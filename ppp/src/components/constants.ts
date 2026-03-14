@@ -6,12 +6,18 @@ import * as THREE from 'three'
 // ║  Change these first before touching any component file.          ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
+
 // ─────────────────────────────────────────────────────────────────
 // CAMERA
 // ─────────────────────────────────────────────────────────────────
-export const CAM_POS  = new THREE.Vector3(5, 2, 10)
-export const CAM_LOOK = new THREE.Vector3(8, 3, -1)
-export const CAM_FOV  = 20
+export const CAM_POS       = new THREE.Vector3(5, 2, 10)
+export const CAM_LOOK      = new THREE.Vector3(8, 3, -1)
+export const CAM_FOV       = 20
+
+// Zoomed-out starting position — camera pans in to CAM_POS when climbing begins
+export const CAM_POS_START = new THREE.Vector3(4, 1.2, 15)   // pulled back & slightly lower
+export const CAM_FOV_START = 30                                // wider FOV = more zoomed out
+export const CAM_INTRO_SEC = 2.2                               // seconds to complete the pan
 
 // ─────────────────────────────────────────────────────────────────
 // AVATAR

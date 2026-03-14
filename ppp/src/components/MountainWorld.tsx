@@ -38,6 +38,9 @@ import {
   SECTION_OFFSET_X,
   SECTION_OFFSET_Z,
   SECTION_ROTATION_Y,
+  CAM_POS_START,
+  CAM_FOV_START,
+  CAM_INTRO_SEC,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
@@ -226,6 +229,12 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     })
   }, [scene])
 
+  // scratch vector — avoids allocating every frame
+  const _camPosLerp = new THREE.Vector3()
+
+  // inside the component, alongside the other refs:
+  const camProgressRef = useRef(0)
+
   const worldRef       = useRef<THREE.Group>(null)
   const bgMountainsRef = useRef<THREE.Group>(null)
   const bgTreesRef     = useRef<THREE.Group>(null)
@@ -320,10 +329,25 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       worldRef.current.rotation.y = sharedRotY
     }
 
-    camera.position.copy(CAM_POS)
+    // ── Camera zoom pan ─────────────────────────────────────────────
+    // Progress animates 0→1 when climbing, 1→0 when paused.
+    if (isClimbing) {
+      camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
+    } else {
+      camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
+    }
+
+    // Cubic ease-out in both directions
+    const p = camProgressRef.current
+    const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
+
+    _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
+    camera.position.copy(_camPosLerp)
     camera.lookAt(CAM_LOOK)
+
     const cam = camera as THREE.PerspectiveCamera
-    if (cam.fov !== CAM_FOV) { cam.fov = CAM_FOV; cam.updateProjectionMatrix() }
+    const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
+    if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
   })
 
   // Helper to get rotation/offset for a given section index
