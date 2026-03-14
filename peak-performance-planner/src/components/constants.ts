@@ -11,8 +11,8 @@ import * as THREE from 'three'
 // CAMERA
 // ─────────────────────────────────────────────────────────────────
 export const CAM_POS  = new THREE.Vector3(15, 7, 15)
-export const CAM_LOOK = new THREE.Vector3(0, 1, 0)
-export const CAM_FOV  = 35
+export const CAM_LOOK = new THREE.Vector3(2, 1, 0)
+export const CAM_FOV  = 30
 
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
@@ -71,9 +71,13 @@ export const GLB_PATH:            string = '/mountain.glb'
 
 export const SECTION_SCALE:       number =  1
 export const SECTION_HEIGHT:      number =  10/3
-// SPAWN_INTERVAL must equal SECTION_HEIGHT so each new section stacks
-// flush on top of the previous one — keeping exactly 3 halves connected
-// at all times with no gaps or overlaps.
+// RECYCLE_THRESHOLD: how far below y=0 a section must drop before it
+// gets teleported to the top. Setting this to -0.5 * SECTION_HEIGHT means
+// recycling fires when the bottom section is only halfway off-screen,
+// so there is always a full section waiting well above the player.
+export const RECYCLE_THRESHOLD:   number = -SECTION_HEIGHT * 2.5
+
+// SPAWN_INTERVAL kept for cloud counting only — not used for section recycling
 export const SPAWN_INTERVAL:      number = SECTION_HEIGHT
 
 export const SECTION_OFFSET_X:    number =  0

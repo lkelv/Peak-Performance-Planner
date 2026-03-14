@@ -46,7 +46,7 @@ export function MountainSection({ groupRef, sectionIndex }: MountainSectionProps
     <group ref={groupRef}>
       <primitive
         object={cloned.current}
-        position={[offX, 3.3, SECTION_OFFSET_Z]}
+        position={[offX, 0, SECTION_OFFSET_Z]}
         rotation={[0, rotY, 0]}
         scale={SECTION_SCALE}
       />

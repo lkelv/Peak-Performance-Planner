@@ -31,7 +31,7 @@ interface Puff {
 
 interface CloudBankProps {
   /** Outer group ref — parent sets position.y every frame */
-  groupRef:       React.RefObject<THREE.Group>
+  groupRef:       React.RefObject<THREE.Group | null>
   /** Called once when the avatar centre crosses the cloud (y passes 0 in local space) */
   onPassThrough?: () => void
 }
