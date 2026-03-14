@@ -13,7 +13,7 @@ import { Canvas } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { CAM_POS, CAM_FOV } from './constants'
-import * as THREE from 'three'
+
 
 interface MountainSceneProps {
   height?:     number

@@ -6,7 +6,6 @@
 
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { buildTerrainGeo } from './buildTerrainGeo'
 
 const BG_PEAKS = [
   [-55, -45, 22, 46, 0x2a3f1e],
@@ -112,13 +111,12 @@ interface FloorProps {
 }
 
 export function Floor({ localY, curve }: FloorProps) {
-  const terrainGeo = useMemo(() => buildTerrainGeo(), [])
   const pathGeo    = useMemo(() => new THREE.TubeGeometry(curve, 260, 0.14, 7, false), [curve])
   const glowGeo    = useMemo(() => new THREE.TubeGeometry(curve, 260, 0.22, 7, false), [curve])
 
   return (
     <group position={[0, localY, 0]}>
-      <mesh geometry={terrainGeo} castShadow receiveShadow>
+      <mesh castShadow receiveShadow>
         <meshPhongMaterial vertexColors side={THREE.DoubleSide} shininess={8} />
       </mesh>
 

@@ -12,7 +12,7 @@
  * connecting the path into a continuous spiral.
  */
 
-import { useRef } from 'react'
+
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import {
