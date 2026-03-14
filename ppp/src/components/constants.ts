@@ -16,7 +16,7 @@ export const CAM_FOV  = 20
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
-export const AVATAR_POS:   [number, number, number] = [6.7, 1.726, 3.3]
+export const AVATAR_POS:   [number, number, number] = [6.7, 1.704, 3.3]
 export const AVATAR_SCALE: number = 0.4
 
 // ─────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export const ROTATION_DIR:   number = -1.0
 // CLIMB_SPEED : world-units/second everything scrolls downward.
 // ROT_SPEED   : radians/second the world group rotates around Y.
 // ─────────────────────────────────────────────────────────────────
-const OVERALL_SPEED: number = 10 //0.75 is good
+const OVERALL_SPEED: number = 0.75 //0.75 is good
 export const CLIMB_SPEED: number = 0.1*OVERALL_SPEED
 export const ROT_SPEED:   number = 0.0942*OVERALL_SPEED
 
@@ -43,7 +43,7 @@ export const ROT_SPEED:   number = 0.0942*OVERALL_SPEED
 // ─────────────────────────────────────────────────────────────────
 export const GLB_PATH:           string = '/mountain.glb'
 export const SECTION_SCALE:      number = 1
-export const SECTION_HEIGHT:     number = 10 / 3
+export const SECTION_HEIGHT:     number = 3.328
 export const RECYCLE_THRESHOLD:  number = -SECTION_HEIGHT * 2.4
 export const SECTION_OFFSET_X:   number = 0
 export const SECTION_OFFSET_Z:   number = 0.0
