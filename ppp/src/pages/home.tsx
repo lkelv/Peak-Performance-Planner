@@ -8,7 +8,8 @@ interface HomeProps {
 }
 
 export default function Home({ session, onSignOut }: HomeProps) {
-  const [isClimbing, setIsClimbing] = useState(true);
+  // ── Fix #2: Start in paused (idle) state instead of climbing ──
+  const [isClimbing, setIsClimbing] = useState(false);
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
