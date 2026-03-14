@@ -21,7 +21,7 @@ export default function GoalSetup({ onComplete }: GoalSetupProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0a0c14',
+        background: 'transparent',
         fontFamily: 'system-ui, sans-serif',
     };
 
