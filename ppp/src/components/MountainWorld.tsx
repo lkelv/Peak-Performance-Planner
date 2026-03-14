@@ -2,7 +2,8 @@
  * MountainWorld.tsx
  *
  * ── Mountain sections ────────────────────────────────────────────
- *  5 GLB slots in a circular buffer. Position-based recycling:
+ *  5 GLB slots in a circular buffer. All 5 clones are created once
+ *  upfront to avoid per-frame stutter. Position-based recycling:
  *  the bottom slot teleports to the top once it drops below
  *  RECYCLE_THRESHOLD.
  *
@@ -15,13 +16,12 @@
  *  snapshotted to totalScrollY at that moment. The mountains group
  *  is then positioned at (mountainSpawnScrollY - totalScrollY),
  *  which places them at world-Y ≈ 0 (cloud level) at the instant
- *  they spawn, and they scroll down naturally from there — no
- *  modulo wrap, no teleport. Trees are permanently modulo-scrolled
- *  and never remounted.
+ *  they spawn, and they scroll down naturally from there.
  */
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import {
   CAM_POS, CAM_LOOK, CAM_FOV,
@@ -33,10 +33,14 @@ import {
   CLIMB_SPEED, ROT_SPEED,
   CLOUD_SPAWN_INTERVAL,
   CLOUD_ABOVE_OFFSET,
+  GLB_PATH,
+  SECTION_SCALE,
+  SECTION_OFFSET_X,
+  SECTION_OFFSET_Z,
+  SECTION_ROTATION_Y,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
-import { MountainSection } from './MountainHalf'
 
 // ─────────────────────────────────────────────────────────────────
 // Seeded RNG
@@ -51,8 +55,7 @@ function seededRand(seed: number) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Background mountains — remounted on every cloud pass-through,
-// spawning at cloud level and scrolling down from there
+// Background mountains — remounted on every cloud pass-through
 // ─────────────────────────────────────────────────────────────────
 
 function makeMountains(generation: number) {
@@ -208,9 +211,24 @@ interface MountainWorldProps {
 
 export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
+  // ── Pre-clone all 5 GLB instances upfront to avoid spawn stutter ──
+  const { scene } = useGLTF(GLB_PATH)
+  const clones = useMemo(() => {
+    return Array.from({ length: POOL }, () => {
+      const clone = scene.clone(true)
+      clone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).castShadow = true;
+          (child as THREE.Mesh).receiveShadow = true
+        }
+      })
+      return clone
+    })
+  }, [scene])
+
   const worldRef       = useRef<THREE.Group>(null)
-  const bgMountainsRef = useRef<THREE.Group>(null)  // remounted on cloud pass
-  const bgTreesRef     = useRef<THREE.Group>(null)  // permanent
+  const bgMountainsRef = useRef<THREE.Group>(null)
+  const bgTreesRef     = useRef<THREE.Group>(null)
   const avatarRef      = useRef<THREE.Group>(null)
   const cloudRef       = useRef<THREE.Group>(null)
 
@@ -239,18 +257,12 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
   const totalRot     = useRef(0)
   const frameRef     = useRef(0)
 
-  // Snapshot of totalScrollY at the moment each mountain set spawned.
-  // Mountains are positioned at (mountainSpawnScrollY - totalScrollY),
-  // placing them at world-Y ≈ 0 (cloud level) on spawn, then scrolling
-  // down naturally — no modulo, no teleport.
   const mountainSpawnScrollY = useRef(0)
 
-  const [secIndices, setSecIndices]                     = useState<[number, number, number, number, number]>([0, 1, 2, 3, 4])
+  const [secIndices, setSecIndices] = useState<[number, number, number, number, number]>([0, 1, 2, 3, 4])
   const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
 
   const handleCloudPassThrough = () => {
-    // Lock in the current scroll position as the spawn baseline so the
-    // new mountains appear right at cloud level the frame they mount.
     mountainSpawnScrollY.current = totalScrollY.current
     setBgMountainGeneration(g => g + 1)
   }
@@ -276,13 +288,11 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
     const sharedRotY = ROTATION_DIR * totalRot.current
 
-    // Mountains: anchored to spawn baseline, scroll down from cloud level.
     if (bgMountainsRef.current) {
       bgMountainsRef.current.position.y = mountainSpawnScrollY.current - totalScrollY.current
       bgMountainsRef.current.rotation.y = sharedRotY
     }
 
-    // Trees: simple modulo scroll, permanently near the base.
     if (bgTreesRef.current) {
       bgTreesRef.current.position.y = -(totalScrollY.current % 200)
       bgTreesRef.current.rotation.y = sharedRotY
@@ -310,18 +320,19 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       worldRef.current.rotation.y = sharedRotY
     }
 
-    // Leg bob
-    // if (avatarRef.current && isClimbing) {
-    //   const bob = Math.sin(frameRef.current * 0.20) * 0.055
-    //   ;(avatarRef.current.children[0] as THREE.Mesh).position.y = 0.08 + bob
-    //   ;(avatarRef.current.children[1] as THREE.Mesh).position.y = 0.08 - bob
-    // }
-
     camera.position.copy(CAM_POS)
     camera.lookAt(CAM_LOOK)
     const cam = camera as THREE.PerspectiveCamera
     if (cam.fov !== CAM_FOV) { cam.fov = CAM_FOV; cam.updateProjectionMatrix() }
   })
+
+  // Helper to get rotation/offset for a given section index
+  const getSectionTransform = (sectionIndex: number) => {
+    const isOdd = sectionIndex % 2 === 1
+    const rotY  = SECTION_ROTATION_Y + (isOdd ? Math.PI : 0)
+    const offX  = isOdd ? -SECTION_OFFSET_X : SECTION_OFFSET_X
+    return { rotY, offX }
+  }
 
   return (
     <>
@@ -339,14 +350,24 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
       {/* World group — GLB sections + cloud bank rotate together */}
       <group ref={worldRef}>
-        <MountainSection groupRef={ref0} sectionIndex={secIndices[0]} />
-        <MountainSection groupRef={ref1} sectionIndex={secIndices[1]} />
-        <MountainSection groupRef={ref2} sectionIndex={secIndices[2]} />
-        <MountainSection groupRef={ref3} sectionIndex={secIndices[3]} />
-        <MountainSection groupRef={ref4} sectionIndex={secIndices[4]} />
+        {([ref0, ref1, ref2, ref3, ref4] as const).map((ref, i) => {
+          const { rotY, offX } = getSectionTransform(secIndices[i])
+          return (
+            <group key={i} ref={ref}>
+              <primitive
+                object={clones[i]}
+                position={[offX, 0, SECTION_OFFSET_Z]}
+                rotation={[0, rotY, 0]}
+                scale={SECTION_SCALE}
+              />
+            </group>
+          )
+        })}
 
         <CloudBank groupRef={cloudRef} onPassThrough={handleCloudPassThrough} />
       </group>
     </>
   )
 }
+
+useGLTF.preload(GLB_PATH)

@@ -26,31 +26,18 @@ import {
 interface MountainSectionProps {
   groupRef:     React.RefObject<THREE.Group>
   sectionIndex: number
+  clonedScene:  THREE.Group  // pre-cloned, passed in
 }
 
-export function MountainSection({ groupRef, sectionIndex }: MountainSectionProps) {
-  const { scene } = useGLTF(GLB_PATH)
-
-  const cloned = useRef<THREE.Group | null>(null)
-  
-  cloned.current = scene.clone(true)
-  cloned.current.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) {
-      (child as THREE.Mesh).castShadow = true;
-      (child as THREE.Mesh).receiveShadow = true
-    }
-})
-
+export function MountainSection({ groupRef, sectionIndex, clonedScene }: MountainSectionProps) {
   const isOdd = sectionIndex % 2 === 1
   const rotY  = SECTION_ROTATION_Y + (isOdd ? Math.PI : 0)
-  // Mirror X offset for odd sections: the flat face must meet the
-  // world-space seam after a 180° Y-flip, so negate the X shift.
   const offX  = isOdd ? -SECTION_OFFSET_X : SECTION_OFFSET_X
 
   return (
     <group ref={groupRef}>
       <primitive
-        object={cloned.current}
+        object={clonedScene}
         position={[offX, 0, SECTION_OFFSET_Z]}
         rotation={[0, rotY, 0]}
         scale={SECTION_SCALE}
