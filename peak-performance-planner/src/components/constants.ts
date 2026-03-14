@@ -10,8 +10,8 @@ import * as THREE from 'three'
 // ─────────────────────────────────────────────────────────────────
 // CAMERA
 // ─────────────────────────────────────────────────────────────────
-export const CAM_POS  = new THREE.Vector3(15, 7, 15)
-export const CAM_LOOK = new THREE.Vector3(2, 1, 0)
+export const CAM_POS  = new THREE.Vector3(17, 8, 15)
+export const CAM_LOOK = new THREE.Vector3(8, 3, 0)
 export const CAM_FOV  = 30
 
 // ─────────────────────────────────────────────────────────────────
@@ -37,8 +37,8 @@ export const ROTATION_DIR:   number = -1.0
 // ROT_SPEED   : radians/second the world group rotates around Y.
 //               Tune independently of CLIMB_SPEED.
 // ─────────────────────────────────────────────────────────────────
-export const CLIMB_SPEED: number = 0.32
-export const ROT_SPEED:   number = 0.3
+export const CLIMB_SPEED: number = 0.3183 *1
+export const ROT_SPEED:   number = 0.3 *1
 
 // ─────────────────────────────────────────────────────────────────
 // GLB MOUNTAIN SECTION
@@ -75,7 +75,7 @@ export const SECTION_HEIGHT:      number =  10/3
 // gets teleported to the top. Setting this to -0.5 * SECTION_HEIGHT means
 // recycling fires when the bottom section is only halfway off-screen,
 // so there is always a full section waiting well above the player.
-export const RECYCLE_THRESHOLD:   number = -SECTION_HEIGHT * 2.5
+export const RECYCLE_THRESHOLD:   number = -SECTION_HEIGHT * 2.4
 
 // SPAWN_INTERVAL kept for cloud counting only — not used for section recycling
 export const SPAWN_INTERVAL:      number = SECTION_HEIGHT
@@ -93,7 +93,7 @@ export const SECTION_ROTATION_Y:  number =   -10
 //                        Should be large enough that it fades in smoothly
 //                        before reaching the avatar (avatar is at y≈0).
 // ─────────────────────────────────────────────────────────────────
-export const CLOUD_SPAWN_INTERVAL: number = 5    // every N mountain spawns
+export const CLOUD_SPAWN_INTERVAL: number = 30    // every N mountain spawns
 export const CLOUD_ABOVE_OFFSET:   number = 30   // units above top section on reset
 
 // ── Legacy aliases kept for CloudBank internal fade constants ──────

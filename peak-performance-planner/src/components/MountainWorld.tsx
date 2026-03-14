@@ -49,56 +49,137 @@ function seededRand(seed: number) {
 
 function makeScenery(generation: number) {
   const rng = seededRand(generation * 7919 + 1)
+
   const PEAK_PALETTES = [
-    [0x2a3f1e, 0x253818, 0x2d4220],
-    [0x3a5a2a, 0x4a6a38, 0x508040],
-    [0x6a7a5a, 0x7a8a68, 0x8a9a78],
-    [0x8a8a9a, 0x9a9aaa, 0xaaaacc],
-    [0xaabbcc, 0xbbccdd, 0xccdded],
+    [0x2a3f1e, 0x253818, 0x2d4220, 0x1e3012, 0x344a22],
+    [0x3a5a2a, 0x4a6a38, 0x508040, 0x2e4a20, 0x5a7048],
+    [0x6a7a5a, 0x7a8a68, 0x8a9a78, 0x5a6a4a, 0x909e80],
+    [0x8a8a9a, 0x9a9aaa, 0xaaaacc, 0x7a7a8a, 0xb0b0cc],
+    [0xaabbcc, 0xbbccdd, 0xccdded, 0x99aabb, 0xddeeff],
   ]
   const palette = PEAK_PALETTES[generation % PEAK_PALETTES.length]
-  const peaks: [number, number, number, number, number][] = Array.from({ length: 14 }, () => {
+
+  // ── Far background ring (large, distant peaks) ──
+  const farPeaks: [number, number, number, number, number][] = Array.from({ length: 20 }, () => {
     const angle = rng() * Math.PI * 2
-    const dist  = 40 + rng() * 55
-    const r     = 10 + rng() * 14
-    const h     = 22 + rng() * 32
+    const dist  = 70 + rng() * 60   // 70-130 units out
+    const r     = 14 + rng() * 20
+    const h     = 35 + rng() * 50
     const col   = palette[Math.floor(rng() * palette.length)]
     return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
-  const TREE_COLS = ['#2a5a1a', '#2f6a20', '#336620', '#3a7226', '#1e4a12']
-  const trees: [number, number, string][] = Array.from({ length: 22 }, (_, i) => {
+
+  // ── Mid ring (medium peaks, mid distance) ──
+  const midPeaks: [number, number, number, number, number][] = Array.from({ length: 20 }, () => {
     const angle = rng() * Math.PI * 2
-    const dist  = 5 + rng() * 18
-    return [Math.cos(angle) * dist, Math.sin(angle) * dist, TREE_COLS[i % TREE_COLS.length]]
+    const dist  = 35 + rng() * 35   // 35-70 units out
+    const r     = 9 + rng() * 14
+    const h     = 20 + rng() * 35
+    const col   = palette[Math.floor(rng() * palette.length)]
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
   })
-  return { peaks, trees }
+
+  // ── Near ring (small hills, close) ──
+  const nearPeaks: [number, number, number, number, number][] = Array.from({ length: 14 }, () => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 25 + rng() * 18   // 20-38 units out
+    const r     = 5 + rng() * 8
+    const h     = 10 + rng() * 18
+    const col   = palette[Math.floor(rng() * palette.length)]
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, r, h, col]
+  })
+
+  // ── Snow-capped tops for taller far peaks ──
+  const snowCaps: [number, number, number, number][] = farPeaks
+    .filter(([,, , h]) => h > 55)
+    .map(([x, z, r, h]) => [x, z, r * 0.3, h * 0.18])
+
+  // ── Trees: dense forest ring ──
+  const TREE_COLS_BY_GEN = [
+    ['#2a5a1a', '#2f6a20', '#336620', '#3a7226', '#1e4a12'],
+    ['#3a6a2a', '#4a7a38', '#508040', '#2e5a20', '#6a8050'],
+    ['#5a6a4a', '#6a7a58', '#7a8a68', '#4a5a3a', '#8a9a78'],
+    ['#7a8a8a', '#8a9a9a', '#9aaaaa', '#6a7a7a', '#aababa'],
+    ['#8a9aaa', '#9aaacc', '#aabbd0', '#7a8a9a', '#bbccdd'],
+  ]
+  const treeCols = TREE_COLS_BY_GEN[generation % TREE_COLS_BY_GEN.length]
+
+  // Inner cluster (close to mountain base)
+  const innerTrees: [number, number, string][] = Array.from({ length: 28 }, (_, i) => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 4 + rng() * 14
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
+  })
+
+  // Mid-range forest
+  const midTrees: [number, number, string][] = Array.from({ length: 30 }, (_, i) => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 14 + rng() * 20
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
+  })
+
+  // Distant sparse trees
+  const farTrees: [number, number, string][] = Array.from({ length: 20 }, (_, i) => {
+    const angle = rng() * Math.PI * 2
+    const dist  = 34 + rng() * 22
+    return [Math.cos(angle) * dist, Math.sin(angle) * dist, treeCols[i % treeCols.length]]
+  })
+
+  return { farPeaks, midPeaks, nearPeaks, snowCaps, trees: [...innerTrees, ...midTrees, ...farTrees] }
 }
 
 function BackgroundScenery({ generation }: { generation: number }) {
-  const { peaks, trees } = makeScenery(generation)
+  const { farPeaks, midPeaks, nearPeaks, snowCaps, trees } = makeScenery(generation)
   return (
     <>
-      {peaks.map(([x, z, r, h, color], i) => (
-        <mesh key={i} position={[x, h / 2, z]}>
+      {/* Far peaks — largest, most distant */}
+      {farPeaks.map(([x, z, r, h, color], i) => (
+        <mesh key={`fp${i}`} position={[x, h / 2, z]}>
           <coneGeometry args={[r, h, 7]} />
           <meshPhongMaterial color={color} flatShading />
         </mesh>
       ))}
+
+      {/* Snow caps on tall far peaks */}
+      {snowCaps.map(([x, z, r, h], i) => (
+        <mesh key={`sc${i}`} position={[x, farPeaks.filter(([,,,fh]) => fh > 55)[i][3] - h * 0.5, z]}>
+          <coneGeometry args={[r, h * 2, 7]} />
+          <meshPhongMaterial color={0xeef4ff} flatShading />
+        </mesh>
+      ))}
+
+      {/* Mid peaks */}
+      {midPeaks.map(([x, z, r, h, color], i) => (
+        <mesh key={`mp${i}`} position={[x, h / 2, z]}>
+          <coneGeometry args={[r, h, 7]} />
+          <meshPhongMaterial color={color} flatShading />
+        </mesh>
+      ))}
+
+      {/* Near hills */}
+      {nearPeaks.map(([x, z, r, h, color], i) => (
+        <mesh key={`np${i}`} position={[x, h / 2, z]}>
+          <coneGeometry args={[r, h, 6]} />
+          <meshPhongMaterial color={color} flatShading />
+        </mesh>
+      ))}
+
+      {/* Trees */}
       {trees.map(([x, z, col], i) => {
-        const s = 0.85 + (i * 0.037)
+        const s = 0.7 + (i * 0.031) % 0.7
         return (
-          <group key={i} position={[x, 0, z]}>
+          <group key={`t${i}`} position={[x, 0, z]}>
             <mesh position={[0, 0.2 * s, 0]}>
-              <cylinderGeometry args={[0.06 * s, 0.09 * s, 0.4 * s, 5]} />
+              <cylinderGeometry args={[0.06 * s, 0.10 * s, 0.45 * s, 5]} />
               <meshPhongMaterial color="#5a3a10" />
             </mesh>
             {([
-              [0.70, 0.38],
-              [0.48, 0.93],
-              [0.26, 1.48],
+              [0.72, 0.38],
+              [0.50, 0.95],
+              [0.28, 1.52],
             ] as [number, number][]).map(([sc, yMult], ti) => (
               <mesh key={ti} position={[0, yMult * s, 0]}>
-                <coneGeometry args={[sc * s, 0.7 * s, 6]} />
+                <coneGeometry args={[sc * s, 0.75 * s, 6]} />
                 <meshPhongMaterial color={col} flatShading />
               </mesh>
             ))}
@@ -165,6 +246,7 @@ export function MountainWorld({
   const [secIndices, setSecIndices] = useState<[number,number,number,number,number]>([0,1,2,3,4])
   const [bgGeneration, setBgGeneration] = useState(0)
 
+  // When the cloud fully passes the avatar, swap background scenery
   const handleCloudPassThrough = () => setBgGeneration(g => g + 1)
 
   // ── Frame loop ─────────────────────────────────────────────────
@@ -186,7 +268,7 @@ export function MountainWorld({
       if (g) g.position.y = secY.current[i]
     }
 
-    // Apply Y to cloud
+    // Apply Y to cloud — also inherits worldRef rotation via parent group
     if (cloudRef.current) cloudRef.current.position.y = cloudY.current
 
     // Background mirrors world rotation + translation
@@ -196,14 +278,9 @@ export function MountainWorld({
     }
 
     // ── Position-based recycling ────────────────────────────────
-    // Fire as soon as the bottom slot drops below RECYCLE_THRESHOLD.
-    // Because RECYCLE_THRESHOLD = -0.5 * SECTION_HEIGHT, this happens
-    // while the section is still partially visible — half a section
-    // before it fully exits — so a new top section is always waiting
-    // well before the player can see any edge.
     const bot = cursor.current
     if (secY.current[bot] < RECYCLE_THRESHOLD) {
-      const top = (cursor.current + POOL - 1) % POOL  // highest slot
+      const top = (cursor.current + POOL - 1) % POOL
       secY.current[bot] = secY.current[top] + SECTION_HEIGHT
       secIdx.current[bot] = secIdx.current[bot] + POOL
       cursor.current = (cursor.current + 1) % POOL
@@ -245,10 +322,12 @@ export function MountainWorld({
     <>
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} />
 
+      {/* Background — lives outside worldRef, mirrors rotation only */}
       <group ref={bgRef}>
         <BackgroundScenery key={bgGeneration} generation={bgGeneration} />
       </group>
 
+      {/* World group — mountain sections + cloud bank all rotate together */}
       <group ref={worldRef}>
         <MountainSection groupRef={ref0} sectionIndex={secIndices[0]} />
         <MountainSection groupRef={ref1} sectionIndex={secIndices[1]} />
@@ -256,6 +335,7 @@ export function MountainWorld({
         <MountainSection groupRef={ref3} sectionIndex={secIndices[3]} />
         <MountainSection groupRef={ref4} sectionIndex={secIndices[4]} />
 
+        {/* Cloud bank travels down + rotates with worldRef */}
         <CloudBank groupRef={cloudRef} onPassThrough={handleCloudPassThrough} />
       </group>
     </>
