@@ -7,16 +7,21 @@ import * as THREE from 'three'
 // ╚══════════════════════════════════════════════════════════════════╝
 
 
+
 // ─────────────────────────────────────────────────────────────────
 // CAMERA
+// Interesting cam_pos: (5, 2, 10), (20, 2, 10), (20, 2.6, 13)
+// Look:                (8, 3, -1), (8, 3, -1),  (-50, 2, -50)
+// FOV:                 20        , 20           , 10
 // ─────────────────────────────────────────────────────────────────
 export const CAM_POS       = new THREE.Vector3(5, 2, 10)
 export const CAM_LOOK      = new THREE.Vector3(8, 3, -1)
 export const CAM_FOV       = 20
 
 // Zoomed-out starting position — camera pans in to CAM_POS when climbing begins
-export const CAM_POS_START = new THREE.Vector3(4, 1.2, 15)   // pulled back & slightly lower
+export const CAM_POS_START = new THREE.Vector3(20, 2.6, 13)   // pulled back & slightly lower
 export const CAM_FOV_START = 30                                // wider FOV = more zoomed out
+export const CAM_LOOK_START = new THREE.Vector3(12, 2.5, 0)
 export const CAM_INTRO_SEC = 2.2                               // seconds to complete the pan
 
 // ─────────────────────────────────────────────────────────────────

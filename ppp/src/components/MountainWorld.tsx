@@ -41,6 +41,7 @@ import {
   CAM_POS_START,
   CAM_FOV_START,
   CAM_INTRO_SEC,
+  CAM_LOOK_START,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
@@ -235,6 +236,9 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
   // inside the component, alongside the other refs:
   const camProgressRef = useRef(0)
 
+  // add a scratch vector for look target (alongside the existing _camPosLerp)
+  const _camLookLerp = new THREE.Vector3()
+
   const worldRef       = useRef<THREE.Group>(null)
   const bgMountainsRef = useRef<THREE.Group>(null)
   const bgTreesRef     = useRef<THREE.Group>(null)
@@ -342,8 +346,9 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 
     _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
+    _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
     camera.position.copy(_camPosLerp)
-    camera.lookAt(CAM_LOOK)
+    camera.lookAt(_camLookLerp)
 
     const cam = camera as THREE.PerspectiveCamera
     const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
