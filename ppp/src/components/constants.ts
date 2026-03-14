@@ -34,7 +34,7 @@ export const ROTATION_DIR:   number = -1.0
 // CLIMB_SPEED : world-units/second everything scrolls downward.
 // ROT_SPEED   : radians/second the world group rotates around Y.
 // ─────────────────────────────────────────────────────────────────
-const OVERALL_SPEED: number = 0.75
+const OVERALL_SPEED: number = 8 //0.75 is good
 export const CLIMB_SPEED: number = 0.1*OVERALL_SPEED
 export const ROT_SPEED:   number = 0.0942*OVERALL_SPEED
 
