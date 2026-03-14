@@ -13,3 +13,9 @@ npm i
 ```
 npm run dev
 ```
+
+Add a `.env` file in directory `ppp`, which requires
+```
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
