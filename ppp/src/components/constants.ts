@@ -9,15 +9,15 @@ import * as THREE from 'three'
 // ─────────────────────────────────────────────────────────────────
 // CAMERA
 // ─────────────────────────────────────────────────────────────────
-export const CAM_POS  = new THREE.Vector3(17, 8, 15)
-export const CAM_LOOK = new THREE.Vector3(8, 3, 0)
-export const CAM_FOV  = 30
+export const CAM_POS  = new THREE.Vector3(5, 2, 10)
+export const CAM_LOOK = new THREE.Vector3(8, 3, -1)
+export const CAM_FOV  = 20
 
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
-export const AVATAR_POS:   [number, number, number] = [7, 2, 4]
-export const AVATAR_SCALE: number = 1
+export const AVATAR_POS:   [number, number, number] = [6.4, 1.7, 4]
+export const AVATAR_SCALE: number = 0.4
 
 // ─────────────────────────────────────────────────────────────────
 // WORLD GROUP
