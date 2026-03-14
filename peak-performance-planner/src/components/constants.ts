@@ -16,9 +16,9 @@ import * as THREE from 'three'
 //             push z negative to aim further up the path
 // CAM_FOV   : field of view in degrees (40=telephoto, 80=wide)
 // ─────────────────────────────────────────────────────────────────
-export const CAM_POS  = new THREE.Vector3(11,  3,  -15)
-export const CAM_LOOK = new THREE.Vector3(8,  1.5, -0)
-export const CAM_FOV  = 25
+export const CAM_POS  = new THREE.Vector3(-5,  20,  -5)
+export const CAM_LOOK = new THREE.Vector3(0,0,0)
+export const CAM_FOV  = 50
 
 // ─────────────────────────────────────────────────────────────────
 // AVATAR
@@ -47,7 +47,7 @@ export const WORLD_OFFSET_X: number =  0.0
 export const WORLD_OFFSET_Z: number =  0.0
 export const WORLD_OFFSET_Y: number =  0.0
 export const PATH_START_T:   number =  0.0   // adjusts initial scroll offset
-export const ROTATION_DIR: number = -1.0   // 1.0 = clockwise, -1.0 = counterclockwise
+export const ROTATION_DIR: number = 1.0   // 1.0 = clockwise, -1.0 = counterclockwise
 
 // ─────────────────────────────────────────────────────────────────
 // HELIX / PATH SHAPE
@@ -96,7 +96,7 @@ export const SCROLL_SPEED = FLOOR_HEIGHT / (60 * FLOOR_SECONDS)
 //                       scene before the old geometry disappears.
 //                       Set to 0 to swap instantly.
 // ─────────────────────────────────────────────────────────────────
-export const FLOOR_SWAP_DELAY_MS: number = 1500
+export const FLOOR_SWAP_DELAY_MS: number = 0
 
 // ─────────────────────────────────────────────────────────────────
 // CLOUD BANK
@@ -108,6 +108,31 @@ export const FLOOR_SWAP_DELAY_MS: number = 1500
 export const CLOUD_T:     number = 0.82
 export const CLOUD_FADE:  number = 6
 export const CLOUD_THICK: number = 4
+
+// ─────────────────────────────────────────────────────────────────
+// GLB MOUNTAIN HALVES  (MountainHalf / MountainWorld)
+// HALF_HEIGHT      : world-space vertical height of one GLB section.
+//                    Must match the actual bounding-box height of your
+//                    Mountain_Left.glb / Mountain_Right.glb models.
+//                    Check this first after importing your GLBs —
+//                    if sections don't connect, this is the knob to turn.
+// CLIMB_SPEED      : world-units per second the avatar travels upward
+//                    while isClimbing=true.  Lower = slower ascent.
+// SWAP_FRAC        : fraction [0–1] through the current section at which
+//                    the next half is swapped in and the bottom removed.
+//                    0.5 = exactly halfway (safe default).
+//                    Lower values swap earlier (more overlap buffer).
+// CLOUD_FRAC       : fraction [0–1] up each section where the cloud
+//                    band sits.  Matches visually with CLOUD_T above.
+// GLB_PATH_LEFT    : public-folder path to the left-half GLB asset.
+// GLB_PATH_RIGHT   : public-folder path to the right-half GLB asset.
+// ─────────────────────────────────────────────────────────────────
+export const HALF_HEIGHT:   number = 0
+export const CLIMB_SPEED:   number = 0
+export const SWAP_FRAC:     number = 0.5
+export const CLOUD_FRAC:    number = 0.80
+export const GLB_PATH_LEFT:  string = '/Mountain_Left.glb'
+export const GLB_PATH_RIGHT: string = '/Mountain_Right.glb'
 
 // ═════════════════════════════════════════════════════════════════
 // DERIVED — do not edit below this line

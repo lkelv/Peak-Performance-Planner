@@ -1,17 +1,35 @@
+/**
+ * MountainScene.tsx  (updated)
+ *
+ * Drop-in replacement for the original MountainScene.
+ * Swaps out the procedural World / Floor system for the
+ * GLB-based MountainWorld with alternating Left / Right halves.
+ *
+ * Usage:
+ *   <MountainScene goalName="Complete Semester 1" isClimbing={timerRunning} />
+ */
+
 import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { Suspense } from 'react'
 import { SkyScene } from './SkyScene'
-import { World } from './World'
+import { MountainWorld } from './MountainWorld'
 import { HUD } from './HUD'
 import { CAM_POS, CAM_FOV } from './constants'
 
 interface MountainSceneProps {
-  goalName?: string
-  height?: number
+  goalName?:  string
+  height?:    number
+  /** Pass false to pause climbing (e.g. timer stopped / break mode) */
+  isClimbing?: boolean
 }
 
-export default function MountainScene({ goalName, height = 600 }: MountainSceneProps) {
-  const [floor, setFloor] = useState(1)
+export default function MountainScene({
+  goalName   = 'Complete Semester 1',
+  height     = 600,
+  isClimbing = true,
+}: MountainSceneProps) {
+  const [section, setSection] = useState(1)
 
   return (
     <div style={{ width: '100%', height, position: 'relative' }}>
@@ -24,7 +42,7 @@ export default function MountainScene({ goalName, height = 600 }: MountainSceneP
         }}
         shadows
       >
-        {/* Bright daytime lighting */}
+        {/* ── Lighting ── */}
         <ambientLight color="#c8ddf0" intensity={1.8} />
         <directionalLight
           position={[40, 80, 30]}
@@ -33,14 +51,22 @@ export default function MountainScene({ goalName, height = 600 }: MountainSceneP
           castShadow
           shadow-mapSize={[2048, 2048]}
         />
-        {/* Sky/ground hemisphere fill */}
         <hemisphereLight args={['#aad4f5', '#4a7a30', 0.9]} />
 
+        {/* ── Sky dome + decorative clouds ── */}
         <SkyScene />
-        <World onFloorChange={setFloor} />
+
+        {/* ── Mountain world — GLB halves + avatar ── */}
+        <Suspense fallback={null}>
+          <MountainWorld
+            isClimbing={isClimbing}
+            onSectionChange={setSection}
+          />
+        </Suspense>
       </Canvas>
 
-      <HUD goalName={goalName} floor={floor} />
+      {/* ── HUD overlay ── */}
+      <HUD goalName={goalName} floor={section} />
     </div>
   )
 }
