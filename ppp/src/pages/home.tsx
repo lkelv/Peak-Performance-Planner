@@ -17,6 +17,13 @@ interface HomeProps {
     onAvatarStateChange: (state: AvatarState) => void;
     onMilestonesChange: (milestones: Milestone[]) => void;
     onTimerProgress: (progress: number) => void;
+    // Called the moment the last subtask checkbox is ticked.
+    // App.tsx uses this to set allTasksDone=true, which tells MountainWorld
+    // to inject peak.glb on the next section recycle.
+    onAllTasksDone: () => void;
+    // Set to true by App.tsx once MountainWorld fires onSummitReached —
+    // i.e. the avatar has physically walked onto the peak.
+    summitReached: boolean;
 }
 
 interface Task {
@@ -71,7 +78,12 @@ const Fireworks = () => {
     return <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 100 }} />;
 };
 
-export default function Home({session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused, onAvatarStateChange, onMilestonesChange, onTimerProgress}: HomeProps) {
+export default function Home({session, 
+    onSignOut, goalName, totalHours, startTasks, 
+    isPaused, setIsPaused, 
+    onAvatarStateChange, onMilestonesChange, onTimerProgress
+    onAllTasksDone, summitReached
+}: HomeProps) {
     console.log('Home component rendered with startTasks:', startTasks);
     if (!startTasks || !Array.isArray(startTasks)) {
         console.error('startTasks is not an array:', startTasks);
@@ -102,6 +114,7 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const animatingRef = useRef(false);
+    const allTasksDoneNotifiedRef = useRef(false);
     const totalSeconds = totalHours * 3600;
 
     const [uiHidden, setUiHidden] = useState(false);
@@ -132,15 +145,27 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
         onMilestonesChange(ms);
     }, [onMilestonesChange]);
 
+    // ── Notify App.tsx the moment all tasks are done ────────────────
+    // This triggers allTasksDone=true → MountainWorld injects peak.glb
+    useEffect(() => {
+        if (isFinished && !allTasksDoneNotifiedRef.current) {
+            allTasksDoneNotifiedRef.current = true;
+            onAllTasksDone();
+        }
+    }, [isFinished, onAllTasksDone]);
+
+    // Fireworks play once the avatar physically arrives at the summit.
+    const showFireworks = summitReached;
+
     // Audio Control logic
     useEffect(() => {
         if (!audioRef.current) return;
-        if (!isPaused && !isFinished && !showFinishModal) {
+        if (!isPaused && !summitReached && !showFinishModal) {
             audioRef.current.play().catch(() => console.log("Audio waiting for user interaction"));
         } else {
             audioRef.current.pause();
         }
-    }, [isPaused, isFinished, showFinishModal]);
+    }, [isPaused, summitReached, showFinishModal]);
 
     // Main Ticking Logic
     useEffect(() => {
@@ -178,34 +203,58 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
         const milestone = milestones.find(m => m.taskIndex === taskIdx);
         if (!milestone || milestone.isReached) return;
 
+        // Check if this is the FINAL task being completed
+        const allDoneNow = updatedTasks.every(t => t.completed);
+
         // If the timer is out or the modal is showing, bypass the 3D animation entirely
         // and just mark the milestone as reached under the hood.
         if (timeLeft <= 0 || showFinishModal) {
             const updated = milestones.map(m =>
-                m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
+                m.id === milestone.id ? { ...m, isReached: true, isRendered: !allDoneNow } : m
             );
             updateMilestones(updated);
             return;
         }
 
-        // Sprint → Flag → Celebrate → Zoom out sequence
-        animatingRef.current = true;
-        setIsPaused(false);
-        changeAvatarState('SPRINTING');
-
-        setTimeout(() => {
+        if (allDoneNow) {
+            // ── FINAL TASK: Enter sprint and STAY sprinting until summit ──
+            // No flag, no celebrate, no zoom-out. The avatar sprints at increased
+            // speed all the way up the peak until onSummitReached fires.
+            // Mark milestone reached immediately (no flag render).
             const updated = milestones.map(m =>
-                m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
+                m.id === milestone.id ? { ...m, isReached: true, isRendered: false } : m
             );
             updateMilestones(updated);
-            changeAvatarState('CELEBRATING');
+
+            setIsPaused(false);
+            changeAvatarState('SPRINTING');
+            // Don't set animatingRef — we want the user to see the sprint
+            // continue smoothly. The avatar stays SPRINTING; App.tsx derives
+            // isSprinting=true so MountainWorld applies SPRINT_SPEED_MULT.
+            // allTasksDone will be set via the useEffect above, which triggers
+            // peak.glb injection in MountainWorld. The summit callback handles
+            // stopping everything.
+
+        } else {
+            // ── INTERMEDIATE TASK: Sprint → Flag → Celebrate → Zoom out (original main behavior) ──
+            animatingRef.current = true;
+            setIsPaused(false);
+            changeAvatarState('SPRINTING');
 
             setTimeout(() => {
-                changeAvatarState('IDLE');
-                setIsPaused(true);
-                animatingRef.current = false;
-            }, CELEBRATE_DURATION * 1000);
-        }, SPRINT_DURATION * 1000);
+                const updated = milestones.map(m =>
+                    m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
+                );
+                updateMilestones(updated);
+                changeAvatarState('CELEBRATING');
+
+                setTimeout(() => {
+                    changeAvatarState('IDLE');
+                    setIsPaused(true);
+                    animatingRef.current = false;
+                }, CELEBRATE_DURATION * 1000);
+            }, SPRINT_DURATION * 1000);
+        }
 
     }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused, timeLeft, showFinishModal]);
 
@@ -292,7 +341,7 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
 
             <audio ref={audioRef} src="/pppaudioOriginal.mp3" loop preload="auto" />
 
-            {isFinished && <Fireworks />}
+            {showFireworks && <Fireworks />}
 
             {/* MODAL: Summit Check-in */}
             {showFinishModal && !isFinished && !showAddTimeModal && (
@@ -355,18 +404,24 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
                 </div>
             )}
             {/* Top Branding / Progress */}
-            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
-                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
-                    <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: (showFireworks || summitReached) ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: (showFireworks || summitReached) ? '#f0c060' : '#fff' }}>
+                    {summitReached
+                        ? 'SUMMIT REACHED 🏔'
+                        : isFinished
+                            ? 'TASKS COMPLETE — REACHING SUMMIT…'
+                            : goalName}
                 </div>
-                {isFinished && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer', padding: '4px 12px', borderRadius: 4 }}>New Ascent</button>}
+                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
+                    <div style={{ width: `${progressPercent}%`, height: '100%', background: showFireworks ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
+                </div>
+                {summitReached && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer', padding: '4px 12px', borderRadius: 4 }}>New Ascent</button>}
             </div>
 
             {/* Timer Display */}
             <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center', width: 180 }}>
                 <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1, marginBottom: 8 }}>REMAINING</div>
-                <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
+                <div style={{ fontSize: 42, fontWeight: 800 }}>{summitReached ? 'DONE' : formatTime(timeLeft)}</div>
             </div>
 
             {/* Milestones Panel */}
@@ -379,23 +434,25 @@ export default function Home({session, onSignOut, goalName, totalHours, startTas
                                 type="checkbox" 
                                 checked={task.completed} 
                                 onChange={() => handleTaskToggle(task.id)} 
-                                disabled={animatingRef.current && timeLeft > 0 && !showFinishModal}
-                                style={{ accentColor: '#f0c060', cursor: (animatingRef.current && timeLeft > 0 && !showFinishModal) ? 'not-allowed' : 'pointer' }} 
+                                disabled={(animatingRef.current && timeLeft > 0 && !showFinishModal) || summitReached}
+                                style={{ accentColor: '#f0c060', cursor: ((animatingRef.current && timeLeft > 0 && !showFinishModal) || summitReached) ? 'not-allowed' : 'pointer' }} 
                             />
                             <span style={{ fontSize: 13, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
                         </div>
                     ))}
                 </div>
-                <form onSubmit={handleAddTask} style={{ display: 'flex', gap: 8 }}>
-                    <input type="text" placeholder="Add milestone..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 12px', color: '#fff', fontSize: 13 }} />
-                    <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
-                </form>
+                {!summitReached && (
+                    <form onSubmit={handleAddTask} style={{ display: 'flex', gap: 8 }}>
+                        <input type="text" placeholder="Add milestone..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 12px', color: '#fff', fontSize: 13 }} />
+                        <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
+                    </form>
+                )}
             </div>
 
             {/* Controls */}
-            <div style={{display: uiHidden ? "none" : "flex", position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', gap: 12, alignItems: 'center' }}>
+            <div style={{display: uiHidden ? "none" : "flex", position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
                 <button onClick={() => setUiHidden(!uiHidden)} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Toggle UI</button>
-                {!isFinished && (
+                {!summitReached && !isFinished && (
                     <button 
                         onClick={() => {
                             if (animatingRef.current) return;
