@@ -18,8 +18,25 @@ export default function MilestoneSetup({ onComplete, goalName }: MilestoneSetupP
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Filter out empty spaces/strings
         const filtered = milestones.filter(m => m.trim() !== '');
-        onComplete(filtered.length > 0 ? filtered : ['Reach the summit']);
+
+        let finalTasks: string[];
+
+        if (filtered.length === 0) {
+            // Case 0: Empty input
+            finalTasks = ['Reach the clouds', 'Reach the peak'];
+        } else if (filtered.length === 1) {
+            // Case 1: User provided exactly one milestone
+            // Keep their milestone and append the peak
+            finalTasks = [filtered[0], 'Reach the peak'];
+        } else {
+            // Case 2: User provided 2 or more milestones
+            finalTasks = filtered;
+        }
+
+        onComplete(finalTasks);
     };
 
     const containerStyle: React.CSSProperties = {
