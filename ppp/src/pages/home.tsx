@@ -130,6 +130,14 @@ export default function Home({
         }
     }, [isPaused, isFinished, showFinishModal]);
 
+    const updateMilestones = useCallback(
+        (updated: Milestone[]) => {
+            setMilestones(updated);
+            onMilestonesChange(updated);
+        },
+        [onMilestonesChange]
+    );
+
     // Timer trigger for Finish Modal
     useEffect(() => {
         if (timeLeft <= 0 && !isFinished && !showFinishModal) {
