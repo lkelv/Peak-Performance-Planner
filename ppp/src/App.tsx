@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
@@ -7,6 +7,7 @@ import GoalSetup from './components/GoalSetup';
 import MilestoneSetup from './components/MilestoneSetup';
 import Home from './pages/home';
 import MountainScene from './components/MountainScene';
+import type { AvatarState, Milestone } from './components/constants';
 import './App.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -20,6 +21,11 @@ function App() {
 
     // Lifted State: Controls both the timer and the 3D world scroll
     const [isPaused, setIsPaused] = useState(false);
+
+    // Milestone flags state — shared between Home (2D UI) and MountainScene (3D)
+    const [avatarState, setAvatarState] = useState<AvatarState>('WALKING');
+    const [milestones, setMilestones] = useState<Milestone[]>([]);
+    const [timerProgress, setTimerProgress] = useState(0);
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -43,7 +49,24 @@ function App() {
         }
     };
 
+    const handleAvatarStateChange = useCallback((state: AvatarState) => {
+        setAvatarState(state);
+    }, []);
+
+    const handleMilestonesChange = useCallback((ms: Milestone[]) => {
+        setMilestones(ms);
+    }, []);
+
+    const handleTimerProgress = useCallback((progress: number) => {
+        setTimerProgress(progress);
+    }, []);
+
     const isInHomeView = !!(session && mountainGoal && initialTasks);
+
+    // Determine climbing state: climbing when in home view, not paused,
+    // and not in a celebration/idle milestone animation
+    const isSprinting = avatarState === 'SPRINTING';
+    const isClimbing = isInHomeView && !isPaused && (avatarState === 'WALKING' || avatarState === 'SPRINTING');
 
     return (
         <BrowserRouter>
@@ -52,9 +75,12 @@ function App() {
                 <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
                     <MountainScene
                         height={window.innerHeight}
-                        // Stop climbing if we are NOT in home view OR if the user paused
-                        isClimbing={isInHomeView && !isPaused}
+                        isClimbing={isClimbing}
+                        isSprinting={isSprinting}
                         viewMode={isInHomeView ? 'close' : 'wide'}
+                        avatarState={avatarState}
+                        milestones={milestones}
+                        timerProgress={timerProgress}
                     />
                 </div>
 
@@ -87,6 +113,9 @@ function App() {
                                     startTasks={initialTasks}
                                     isPaused={isPaused}
                                     setIsPaused={setIsPaused}
+                                    onAvatarStateChange={handleAvatarStateChange}
+                                    onMilestonesChange={handleMilestonesChange}
+                                    onTimerProgress={handleTimerProgress}
                                 />
                             ) : <Navigate to="/" replace />
                         } />
