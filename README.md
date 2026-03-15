@@ -8,7 +8,7 @@ Instead of traditional to-do lists, your progress is represented by climbing a m
 The goal is to make productivity feel **motivating, visual, and rewarding**.
 
 # Try our Website!
-https://peak-performance-planner.vercel.app/setup
+https://peak-performance-planner.vercel.app
 To login:
 - Email: test@demo.com
 - Password: demo67
