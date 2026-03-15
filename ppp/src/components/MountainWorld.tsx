@@ -8,6 +8,19 @@
  * GLB mountain clones have castShadow/receiveShadow DISABLED to prevent
  * the harsh self-shadowing texture banding seen when shadows are on.
  * Only the ground plane and avatar receive/cast shadows.
+ *
+ * PEAK LOGIC (merged from add-peak-v3):
+ *   When allTasksDone becomes true, the very next section to recycle
+ *   is swapped out for peak.glb instead of the normal mountain.glb.
+ *   After the avatar walks PEAK_STOP_AFTER_HALF_REV revolutions on the
+ *   peak, onSummitReached() fires — the parent stops climbing and shows
+ *   fireworks. All position / rotation tuning for the peak lives in
+ *   constants.ts (PEAK_ROTATION_Y, PEAK_OFFSET_X, PEAK_OFFSET_Z).
+ *
+ * MILESTONE FLAGS (from main):
+ *   Intermediate subtask completions still trigger sprint → flag → celebrate
+ *   animations. The flag camera zoom and Flag component are used for these.
+ *   Only the FINAL subtask triggers the peak spawn instead of a flag.
  */
 
 import { useRef, useState, useMemo } from 'react'
@@ -39,6 +52,17 @@ import {
   SPRINT_SPEED_MULT,
   TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
   DIRLIGHT_INTENSITY_DAY, DIRLIGHT_INTENSITY_DUSK, DIRLIGHT_INTENSITY_NIGHT,
+  // ── Peak constants ──────────────────────────────────────────────
+  CAM_POS_SUMMIT,
+  CAM_LOOK_SUMMIT,
+  CAM_FOV_SUMMIT,
+  CAM_SUMMIT_TRANSITION_SEC,
+  PEAK_GLB_PATH,
+  PEAK_SCALE,
+  PEAK_ROTATION_Y,
+  PEAK_OFFSET_X,
+  PEAK_OFFSET_Z,
+  PEAK_STOP_AFTER_HALF_REV,
 } from './constants'
 import type { AvatarState, Milestone } from './constants'
 import { Avatar } from './Avatar'
@@ -48,9 +72,6 @@ import { CelestialBodies } from './SkyScene'
 import { Flag } from './Flag'
 
 // ── Sun light constants ───────────────────────────────────────────
-// The sun directional light orbits at this radius around world origin.
-// Its XZ position is the OPPOSITE of the sun disc's position in the sky,
-// so shadows fall away from the sun.
 const SUN_LIGHT_RADIUS = 60   // world-units
 const SUN_LIGHT_Y      = 80   // fixed height
 
@@ -221,11 +242,13 @@ function BackgroundTrees() {
 const POOL = 5
 
 interface MountainWorldProps {
-  isClimbing?:    boolean
-  isSprinting?:   boolean
-  avatarState?:   AvatarState
-  milestones?:    Milestone[]
-  timerProgress?: number
+  isClimbing?:      boolean
+  isSprinting?:     boolean
+  avatarState?:     AvatarState
+  milestones?:      Milestone[]
+  timerProgress?:   number
+  allTasksDone?:    boolean          // when true, next recycled section becomes the peak
+  onSummitReached?: () => void       // fires once after PEAK_STOP_AFTER_HALF_REV revolutions on peak
 }
 
 export function MountainWorld({
@@ -233,9 +256,11 @@ export function MountainWorld({
   isSprinting   = false,
   avatarState   = 'WALKING',
   milestones    = [],
+  allTasksDone  = false,
+  onSummitReached,
 }: MountainWorldProps) {
 
-  // ── GLB clones — castShadow/receiveShadow OFF to prevent texture banding ──
+  // ── Normal GLB clones — castShadow/receiveShadow OFF ──────────────
   const { scene } = useGLTF(GLB_PATH)
   const clones = useMemo(() => {
     return Array.from({ length: POOL }, () => {
@@ -243,9 +268,6 @@ export function MountainWorld({
       clone.traverse((child) => {
         const mesh = child as THREE.Mesh
         if (mesh.isMesh) {
-          // Shadows disabled on the mountain GLB — they cause harsh
-          // self-shadow banding on the low-poly geometry. The avatar
-          // and ground plane still cast/receive shadows correctly.
           mesh.castShadow    = false
           mesh.receiveShadow = false
         }
@@ -254,12 +276,27 @@ export function MountainWorld({
     })
   }, [scene])
 
-  // ── Sun directional light ref — owned here so we can update from totalRot ──
+  // ── Peak GLB clone ────────────────────────────────────────────────
+  const { scene: peakScene } = useGLTF(PEAK_GLB_PATH)
+  const peakClone = useMemo(() => {
+    const clone = peakScene.clone(true)
+    clone.traverse((child) => {
+      const mesh = child as THREE.Mesh
+      if (mesh.isMesh) {
+        mesh.castShadow    = false
+        mesh.receiveShadow = false
+      }
+    })
+    return clone
+  }, [peakScene])
+
+  // ── Sun directional light ref ─────────────────────────────────────
   const sunLightRef = useRef<THREE.DirectionalLight>(null)
 
   const _camPosLerp  = new THREE.Vector3()
   const _camLookLerp = new THREE.Vector3()
-  const camProgressRef = useRef(0)
+  const camProgressRef       = useRef(0)   // 0→1: intro pan (start → climb)
+  const summitCamProgressRef = useRef(0)   // 0→1: summit pan (climb → summit shot)
 
   const worldRef       = useRef<THREE.Group>(null)
   const bgMountainsRef = useRef<THREE.Group>(null)
@@ -299,16 +336,23 @@ export function MountainWorld({
   const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
   const [groundGone,           setGroundGone]           = useState(false)
 
+  // ── Peak / summit state (from add-peak-v3) ────────────────────────
+  const peakSpawnedRef   = useRef(false)
+  const peakSlotRef      = useRef(-1)
+  const peakRotAtSpawn   = useRef(0)
+  const summitFiredRef   = useRef(false)
+  const [hasPeak, setHasPeak] = useState(false)
+
   const handleCloudPassThrough = () => {
     mountainSpawnScrollY.current = totalScrollY.current
     setBgMountainGeneration(g => g + 1)
     setGroundGone(true)
   }
 
-  // Track spawned flag positions (in avatar-relative space, stored as scrollY at spawn time)
+  // Track spawned flag positions (for intermediate milestones, not final task)
   const spawnedFlagsRef = useRef<Map<string, { scrollY: number; mode: 'pop' | 'rise' }>>(new Map())
 
-  // Camera choreography state for flag celebrations
+  // Camera choreography state for flag celebrations (intermediate milestones)
   const flagCamProgressRef = useRef(0)
 
   useFrame(({ camera }, delta) => {
@@ -361,10 +405,6 @@ export function MountainWorld({
     }
 
     // ── Sun directional light — position tracks world rotation ────
-    // The sun disc in CelestialBodies is at angle = sharedRotY on the
-    // far side of the scene. We place the light at the OPPOSITE XZ angle
-    // so that shadows fall away from the sun regardless of how far the
-    // avatar has rotated around the mountain.
     if (sunLightRef.current) {
       const hour = wrapHour(localHour())
       const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
@@ -385,8 +425,7 @@ export function MountainWorld({
       sunLightRef.current.intensity =
         dayW * DIRLIGHT_INTENSITY_DAY + duskW * DIRLIGHT_INTENSITY_DUSK + nightW * DIRLIGHT_INTENSITY_NIGHT
 
-      // Rotate opposite to sharedRotY so it always shines FROM the sun's side
-      const lightAngle = sharedRotY + Math.PI   // opposite side of the world
+      const lightAngle = sharedRotY + Math.PI
       sunLightRef.current.position.set(
         Math.cos(lightAngle) * SUN_LIGHT_RADIUS,
         SUN_LIGHT_Y,
@@ -394,19 +433,51 @@ export function MountainWorld({
       )
     }
 
-    // Section recycling
+    // ── Section recycling ─────────────────────────────────────────
+    // Once the peak has spawned it is the final element on the path.
+    // All recycling stops permanently.
     const bot = cursor.current
-    if (secY.current[bot] < RECYCLE_THRESHOLD) {
+    if (!peakSpawnedRef.current && secY.current[bot] < RECYCLE_THRESHOLD) {
       const top = (cursor.current + POOL - 1) % POOL
       secY.current[bot]   = secY.current[top] + SECTION_HEIGHT
       secIdx.current[bot] = secIdx.current[bot] + POOL
       cursor.current      = (cursor.current + 1) % POOL
       spawnCountRef.current += 1
+
+      // ── Peak injection ──────────────────────────────────────────
+      // When all tasks are completed, commandeer this slot for peak.glb.
+      if (allTasksDone) {
+        peakSpawnedRef.current = true
+        peakSlotRef.current    = bot
+        peakRotAtSpawn.current = totalRot.current
+
+        // Sink every other slot far below so nothing pokes out
+        for (let s = 0; s < POOL; s++) {
+          if (s !== bot) secY.current[s] = RECYCLE_THRESHOLD * 10
+        }
+
+        setHasPeak(true)
+      }
+
       setSecIndices([...secIdx.current] as [number,number,number,number,number])
+
       if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
         lastCloudSpawn.current = spawnCountRef.current
         cloudY.current = Math.max(...secY.current) + CLOUD_ABOVE_OFFSET
       }
+    }
+
+    // ── Summit detection ──────────────────────────────────────────
+    // Once the peak is in the world, measure how far totalRot has
+    // advanced. When it exceeds PEAK_STOP_AFTER_HALF_REV full
+    // revolutions (× 2π), fire onSummitReached() exactly once.
+    if (
+      peakSpawnedRef.current &&
+      !summitFiredRef.current &&
+      totalRot.current - peakRotAtSpawn.current >= Math.PI * 2 * PEAK_STOP_AFTER_HALF_REV
+    ) {
+      summitFiredRef.current = true
+      onSummitReached?.()
     }
 
     if (worldRef.current) {
@@ -414,7 +485,7 @@ export function MountainWorld({
       worldRef.current.rotation.y = sharedRotY
     }
 
-    // ── Spawn / despawn flags for milestones ─────────────────────
+    // ── Spawn / despawn flags for intermediate milestones ─────────
     for (const ms of milestones) {
       if (ms.isRendered && !spawnedFlagsRef.current.has(ms.id)) {
         const mode = ms.isReached ? 'pop' : 'rise'
@@ -432,50 +503,78 @@ export function MountainWorld({
       }
     }
 
-    // ── Camera zoom pan ──────────────────────────────────────────
-    // Flag camera is active during CELEBRATING and IDLE (post-milestone
-    // pause). It releases when avatarState returns to WALKING (Resume).
-    // If the user ticks another task while already zoomed out, keep
-    // the flag cam to avoid a zoom-in-then-out stutter.
-    const wantsFlagCam =
-      avatarState === 'CELEBRATING' ||
-      avatarState === 'IDLE' ||
-      (avatarState === 'SPRINTING' && flagCamProgressRef.current > 0.5)
+    // ── Camera choreography ──────────────────────────────────────
+    // Three phases:
+    //   1. Intro pan: CAM_POS_START → CAM_POS (driven by isClimbing)
+    //   2. Flag celebration: CAM_POS → CAM_FLAG_POS (intermediate milestones)
+    //   3. Summit pan: climbing position → CAM_POS_SUMMIT (after peak reached)
 
-    if (wantsFlagCam) {
-      // Zoom out to flag celebration view
-      flagCamProgressRef.current = Math.min(1, flagCamProgressRef.current + delta * 1.5)
-    } else {
-      flagCamProgressRef.current = Math.max(0, flagCamProgressRef.current - delta * 1.5)
+    // Phase 3 — Summit pan (highest priority, never reverses)
+    if (summitFiredRef.current) {
+      summitCamProgressRef.current = Math.min(1, summitCamProgressRef.current + delta / CAM_SUMMIT_TRANSITION_SEC)
     }
 
-    if (flagCamProgressRef.current > 0.01) {
-      // Flag celebration camera takes priority
-      const ft = flagCamProgressRef.current
-      const fe = ft < 0.5 ? 2 * ft * ft : 1 - Math.pow(-2 * ft + 2, 2) / 2
-      _camPosLerp.lerpVectors(CAM_POS, CAM_FLAG_POS, fe)
-      _camLookLerp.lerpVectors(CAM_LOOK, CAM_FLAG_LOOK, fe)
-      camera.position.copy(_camPosLerp)
-      camera.lookAt(_camLookLerp)
+    if (summitCamProgressRef.current > 0.01) {
+      // Summit camera takes absolute priority
+      const easeInOut = (x: number) => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
+
+      // Compute the intro base position (should be fully at CAM_POS by now)
+      const introT  = easeInOut(Math.min(1, camProgressRef.current))
+      const basePos  = _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, introT).clone()
+      const baseLook = _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, introT).clone()
+      const baseFov  = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * introT
+
+      // Lerp from base position toward summit shot
+      const summitT = easeInOut(summitCamProgressRef.current)
+      camera.position.lerpVectors(basePos, CAM_POS_SUMMIT, summitT)
+      camera.lookAt(new THREE.Vector3().lerpVectors(baseLook, CAM_LOOK_SUMMIT, summitT))
       const cam = camera as THREE.PerspectiveCamera
-      const targetFov = CAM_FOV + (CAM_FLAG_FOV - CAM_FOV) * fe
-      if (Math.abs(cam.fov - targetFov) > 0.01) { cam.fov = targetFov; cam.updateProjectionMatrix() }
-    } else {
-      // Normal intro/climbing camera
-      if (isClimbing) {
-        camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
-      } else {
-        camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
-      }
-      const p = camProgressRef.current
-      const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
-      _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
-      _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
-      camera.position.copy(_camPosLerp)
-      camera.lookAt(_camLookLerp)
-      const cam = camera as THREE.PerspectiveCamera
-      const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
+      const targetFov = baseFov + (CAM_FOV_SUMMIT - baseFov) * summitT
       if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+
+    } else {
+      // Phase 2 — Flag celebration camera (intermediate milestones only)
+      // Once allTasksDone, skip the flag cam entirely — keep the normal
+      // climbing camera so the sprint up the peak feels seamless.
+      const wantsFlagCam = !allTasksDone && (
+        avatarState === 'CELEBRATING' ||
+        avatarState === 'IDLE' ||
+        (avatarState === 'SPRINTING' && flagCamProgressRef.current > 0.5)
+      )
+
+      if (wantsFlagCam) {
+        flagCamProgressRef.current = Math.min(1, flagCamProgressRef.current + delta * 1.5)
+      } else {
+        flagCamProgressRef.current = Math.max(0, flagCamProgressRef.current - delta * 1.5)
+      }
+
+      if (flagCamProgressRef.current > 0.01) {
+        const ft = flagCamProgressRef.current
+        const fe = ft < 0.5 ? 2 * ft * ft : 1 - Math.pow(-2 * ft + 2, 2) / 2
+        _camPosLerp.lerpVectors(CAM_POS, CAM_FLAG_POS, fe)
+        _camLookLerp.lerpVectors(CAM_LOOK, CAM_FLAG_LOOK, fe)
+        camera.position.copy(_camPosLerp)
+        camera.lookAt(_camLookLerp)
+        const cam = camera as THREE.PerspectiveCamera
+        const targetFov = CAM_FOV + (CAM_FLAG_FOV - CAM_FOV) * fe
+        if (Math.abs(cam.fov - targetFov) > 0.01) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+      } else {
+        // Phase 1 — Normal intro/climbing camera
+        if (isClimbing) {
+          camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
+        } else if (!summitFiredRef.current) {
+          camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
+        }
+        const p = camProgressRef.current
+        const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
+        _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
+        _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
+        camera.position.copy(_camPosLerp)
+        camera.lookAt(_camLookLerp)
+        const cam = camera as THREE.PerspectiveCamera
+        const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
+        if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+      }
     }
   })
 
@@ -490,9 +589,7 @@ export function MountainWorld({
     <>
       {/*
         Sun directional light — owned here so it can read totalRot.
-        castShadow ON, but only affects the ground plane and avatar
-        since GLB meshes have castShadow/receiveShadow = false.
-        Position is updated each frame to orbit opposite to the sun disc.
+        castShadow ON, but only affects the ground plane and avatar.
       */}
       <directionalLight
         ref={sunLightRef}
@@ -512,12 +609,10 @@ export function MountainWorld({
 
       <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} avatarState={avatarState} />
 
-      {/* Milestone flags — rendered near the avatar position */}
+      {/* Milestone flags — rendered near the avatar position (intermediate milestones only) */}
       {milestones.filter(m => m.isRendered).map((ms) => {
         const flagData = spawnedFlagsRef.current.get(ms.id)
         if (!flagData) return null
-        // Place the flag at the avatar's X/Z but slightly offset so it's visible
-        // The Y offset compensates for scroll since spawn
         const yOffset = flagData.scrollY - totalScrollY.current
         return (
           <Flag
@@ -543,9 +638,26 @@ export function MountainWorld({
 
       <group ref={worldRef}>
         {([ref0, ref1, ref2, ref3, ref4] as const).map((ref, i) => {
+
+          // ── Peak slot — uses peak.glb with its own tuning constants ──
+          if (hasPeak && i === peakSlotRef.current) {
+            return (
+              <group key={i} ref={ref}>
+                <primitive
+                  object={peakClone}
+                  position={[PEAK_OFFSET_X, -3.5, PEAK_OFFSET_Z]}
+                  rotation={[0, PEAK_ROTATION_Y, 0]}
+                  scale={PEAK_SCALE}
+                />
+              </group>
+            )
+          }
+
+          // ── Normal mountain slot ──────────────────────────────────
+          // Hide all normal slots the moment the peak spawns
           const { rotY, offX } = getSectionTransform(secIndices[i])
           return (
-            <group key={i} ref={ref}>
+            <group key={i} ref={ref} visible={!hasPeak}>
               <primitive
                 object={clones[i]}
                 position={[offX, 0, SECTION_OFFSET_Z]}
@@ -562,3 +674,4 @@ export function MountainWorld({
 }
 
 useGLTF.preload(GLB_PATH)
+useGLTF.preload(PEAK_GLB_PATH)

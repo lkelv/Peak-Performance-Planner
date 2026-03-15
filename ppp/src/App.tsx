@@ -27,11 +27,32 @@ function App() {
     const [milestones, setMilestones] = useState<Milestone[]>([]);
     const [timerProgress, setTimerProgress] = useState(0);
 
+    // ── Peak / summit state (from add-peak-v3) ──────────────────────
+    // True once every subtask checkbox is ticked — tells MountainWorld to
+    // inject peak.glb on the next section recycle instead of mountain.glb.
+    const [allTasksDone, setAllTasksDone] = useState(false);
+
+    // True once MountainWorld fires onSummitReached — the avatar has walked
+    // PEAK_STOP_AFTER_HALF_REV revolutions on the peak. At that point we
+    // pause climbing so the fireworks can play.
+    const [summitReached, setSummitReached] = useState(false);
+
+    const handleSummitReached = useCallback(() => {
+        setSummitReached(true);
+        setIsPaused(true);
+        setAvatarState('IDLE');
+    }, []);
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
-            if (!session) { setMountainGoal(null); setInitialTasks(null); }
+            if (!session) {
+                setMountainGoal(null);
+                setInitialTasks(null);
+                setAllTasksDone(false);
+                setSummitReached(false);
+            }
         });
         return () => subscription.unsubscribe();
     }, []);
@@ -61,12 +82,24 @@ function App() {
         setTimerProgress(progress);
     }, []);
 
+    const handleAllTasksDone = useCallback(() => {
+        setAllTasksDone(true);
+    }, []);
+
     const isInHomeView = !!(session && mountainGoal && initialTasks);
 
     // Determine climbing state: climbing when in home view, not paused,
-    // and not in a celebration/idle milestone animation
+    // and not in a celebration/idle milestone animation.
+    // ALSO keep climbing when allTasksDone is true but summit not yet reached
+    // (avatar needs to walk up the peak).
     const isSprinting = avatarState === 'SPRINTING';
-    const isClimbing = isInHomeView && !isPaused && (avatarState === 'WALKING' || avatarState === 'SPRINTING');
+    const isClimbing = isInHomeView && !isPaused && (
+        avatarState === 'WALKING' ||
+        avatarState === 'SPRINTING' ||
+        // Keep climbing on the peak even after avatar state goes idle from
+        // the final task celebration — the summit walk must continue
+        (allTasksDone && !summitReached)
+    );
 
     return (
         <BrowserRouter>
@@ -81,6 +114,8 @@ function App() {
                         avatarState={avatarState}
                         milestones={milestones}
                         timerProgress={timerProgress}
+                        allTasksDone={allTasksDone}
+                        onSummitReached={handleSummitReached}
                     />
                 </div>
 
@@ -116,6 +151,8 @@ function App() {
                                     onAvatarStateChange={handleAvatarStateChange}
                                     onMilestonesChange={handleMilestonesChange}
                                     onTimerProgress={handleTimerProgress}
+                                    onAllTasksDone={handleAllTasksDone}
+                                    summitReached={summitReached}
                                 />
                             ) : <Navigate to="/" replace />
                         } />

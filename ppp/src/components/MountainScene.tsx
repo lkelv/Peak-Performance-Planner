@@ -136,23 +136,27 @@ function CameraController({ viewMode }: { viewMode: 'wide' | 'close' }) {
 // MountainScene
 // ─────────────────────────────────────────────────────────────────
 interface MountainSceneProps {
-  height?:       number
-  isClimbing?:   boolean
-  isSprinting?:  boolean
-  viewMode?:     'wide' | 'close'
-  avatarState?:  AvatarState
-  milestones?:   Milestone[]
-  timerProgress?: number
+  height?:          number
+  isClimbing?:      boolean
+  isSprinting?:     boolean
+  viewMode?:        'wide' | 'close'
+  avatarState?:     AvatarState
+  milestones?:      Milestone[]
+  timerProgress?:   number
+  allTasksDone?:    boolean          // passed straight to MountainWorld
+  onSummitReached?: () => void       // passed straight to MountainWorld
 }
 
 export default function MountainScene({
-  height        = window.innerHeight,
-  isClimbing    = true,
-  isSprinting   = false,
-  viewMode      = 'close',
-  avatarState   = 'WALKING',
-  milestones    = [],
-  timerProgress = 0,
+  height          = window.innerHeight,
+  isClimbing      = true,
+  isSprinting     = false,
+  viewMode        = 'close',
+  avatarState     = 'WALKING',
+  milestones      = [],
+  timerProgress   = 0,
+  allTasksDone    = false,
+  onSummitReached,
 }: MountainSceneProps) {
   return (
     <div style={{ width: '100%', height, position: 'relative' }}>
@@ -177,8 +181,8 @@ export default function MountainScene({
 
         {/*
           MountainWorld owns the sun directional light (castShadow).
-          It updates the light position each frame based on totalRot
-          so the shadow always falls opposite the sun.
+          allTasksDone triggers peak.glb injection on the next recycle.
+          onSummitReached fires after PEAK_STOP_AFTER_HALF_REV revolutions.
         */}
         <Suspense fallback={null}>
           <MountainWorld
@@ -187,6 +191,8 @@ export default function MountainScene({
             avatarState={avatarState}
             milestones={milestones}
             timerProgress={timerProgress}
+            allTasksDone={allTasksDone}
+            onSummitReached={onSummitReached}
           />
         </Suspense>
       </Canvas>

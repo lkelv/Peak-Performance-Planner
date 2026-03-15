@@ -232,3 +232,39 @@ export const FLAG_CLOTH_HEIGHT = 0.32
 
 // How many seconds before timer expiry to start showing the flag (Scenario B)
 export const FLAG_ANTICIPATION_SECONDS = 10
+
+// ─────────────────────────────────────────────────────────────────
+// SUMMIT CAMERA
+// Activates when onSummitReached() fires — the avatar has stopped at
+// the peak. The camera slowly lerps from the climbing position to this
+// cinematic wide shot that frames the whole summit.
+//
+// HOW TO TUNE:
+//   CAM_POS_SUMMIT  — where the camera sits.
+//   CAM_LOOK_SUMMIT — the point the camera looks AT.
+//   CAM_FOV_SUMMIT  — wider FOV shows more scene; narrower compresses depth.
+//   CAM_SUMMIT_TRANSITION_SEC — seconds to lerp into the summit shot.
+// ─────────────────────────────────────────────────────────────────
+export const CAM_POS_SUMMIT             = new THREE.Vector3(-8, 6, 18)
+export const CAM_LOOK_SUMMIT            = new THREE.Vector3(6, 5, -2)
+export const CAM_FOV_SUMMIT             = 28
+export const CAM_SUMMIT_TRANSITION_SEC  = 3.0
+
+// ─────────────────────────────────────────────────────────────────
+// PEAK (SUMMIT) SECTION
+// Spawns instead of a normal mountain section when all subtasks are done.
+//
+// HOW TO ALIGN THE PEAK WITH THE CURRENT PATH:
+//   1. Start with PEAK_ROTATION_Y = SECTION_ROTATION_Y
+//   2. Normal sections alternate between SECTION_ROTATION_Y and
+//      SECTION_ROTATION_Y + Math.PI — match the replaced slot.
+//   3. Fine-tune PEAK_OFFSET_X / PEAK_OFFSET_Z if path drifts.
+//   4. PEAK_SCALE only if peak.glb is a different unit size.
+//   5. PEAK_STOP_AFTER_HALF_REV = how far avatar walks before halting.
+// ─────────────────────────────────────────────────────────────────
+export const PEAK_GLB_PATH:              string = '/peak.glb'
+export const PEAK_SCALE:                 number = 1
+export const PEAK_ROTATION_Y:            number = -SECTION_ROTATION_Y
+export const PEAK_OFFSET_X:              number = SECTION_OFFSET_X
+export const PEAK_OFFSET_Z:              number = SECTION_OFFSET_Z
+export const PEAK_STOP_AFTER_HALF_REV:   number = 0.96
