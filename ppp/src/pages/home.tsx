@@ -255,7 +255,14 @@ export default function Home({
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
                 {!isFinished && (
                     <button
-                        onClick={() => setIsPaused(!isPaused)}
+                        onClick={() => {
+                            const resuming = isPaused;
+                            setIsPaused(!isPaused);
+                            // When resuming, reset avatar back to walking so climbing restarts
+                            if (resuming) {
+                                changeAvatarState('WALKING');
+                            }
+                        }}
                         style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
                     >
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}

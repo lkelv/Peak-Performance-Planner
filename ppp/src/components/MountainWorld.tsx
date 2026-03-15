@@ -430,8 +430,10 @@ export function MountainWorld({
     }
 
     // ── Camera zoom pan ──────────────────────────────────────────
-    const isCelebrating = avatarState === 'CELEBRATING' || avatarState === 'IDLE'
-    const wantsFlagCam = isCelebrating && milestones.some(m => m.isReached)
+    // Only hold the flag camera during CELEBRATING — once avatar goes
+    // IDLE the normal pause camera takes over, and on resume WALKING
+    // resets everything back to the climbing camera.
+    const wantsFlagCam = avatarState === 'CELEBRATING'
 
     if (wantsFlagCam) {
       // Zoom out to flag celebration view
