@@ -133,5 +133,9 @@ The timer helps maintain focus while working through milestones.
   - Authentication
   - Session management
 
+# Functionality
+Press H - Toggle UI
+
+
 # Authors
 Made by Kelvin, Yeeheng, Tom, Eric, Jonathan and Zhehan
