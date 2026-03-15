@@ -24,6 +24,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { CAM_POS, CAM_FOV } from './constants'
+import type { AvatarState, Milestone } from './constants'
 import * as THREE from 'three'
 import {
   TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
@@ -65,7 +66,6 @@ function DynamicLights() {
     const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
     const isDay   = hour >= TIME_DAY_START   && hour < TIME_DUSK_START
     const isDusk  = hour >= TIME_DUSK_START  && hour < TIME_NIGHT_START
-    const isNight = hour >= TIME_NIGHT_START || hour < TIME_DAWN_START
 
     const dawnT = isDawn ? (hour - TIME_DAWN_START) / (TIME_DAY_START   - TIME_DAWN_START) : 0
     const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0
@@ -150,6 +150,23 @@ export default function MountainScene({
   viewMode        = 'close',
   allTasksDone    = false,
   onSummitReached,
+  height?:       number
+  isClimbing?:   boolean
+  isSprinting?:  boolean
+  viewMode?:     'wide' | 'close'
+  avatarState?:  AvatarState
+  milestones?:   Milestone[]
+  timerProgress?: number
+}
+
+export default function MountainScene({
+  height        = window.innerHeight,
+  isClimbing    = true,
+  isSprinting   = false,
+  viewMode      = 'close',
+  avatarState   = 'WALKING',
+  milestones    = [],
+  timerProgress = 0,
 }: MountainSceneProps) {
   return (
     <div style={{ width: '100%', height, position: 'relative' }}>
@@ -182,6 +199,10 @@ export default function MountainScene({
             isClimbing={isClimbing}
             allTasksDone={allTasksDone}
             onSummitReached={onSummitReached}
+            isSprinting={isSprinting}
+            avatarState={avatarState}
+            milestones={milestones}
+            timerProgress={timerProgress}
           />
         </Suspense>
       </Canvas>

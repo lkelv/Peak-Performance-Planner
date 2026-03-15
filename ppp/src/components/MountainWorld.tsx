@@ -45,6 +45,10 @@ import {
   CAM_LOOK_SUMMIT,
   CAM_FOV_SUMMIT,
   CAM_SUMMIT_TRANSITION_SEC,
+  CAM_FLAG_POS,
+  CAM_FLAG_LOOK,
+  CAM_FLAG_FOV,
+  SPRINT_SPEED_MULT,
   TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
   DIRLIGHT_INTENSITY_DAY, DIRLIGHT_INTENSITY_DUSK, DIRLIGHT_INTENSITY_NIGHT,
   // ── Peak constants — tune these in constants.ts ──────────────────
@@ -55,10 +59,12 @@ import {
   PEAK_OFFSET_Z,
   PEAK_STOP_AFTER_HALF_REV,
 } from './constants'
+import type { AvatarState, Milestone } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
 import { GroundPlane } from './GroundPlane'
 import { CelestialBodies } from './SkyScene'
+import { Flag } from './Flag'
 
 // ── Sun light constants ───────────────────────────────────────────
 const SUN_LIGHT_RADIUS = 60
@@ -239,6 +245,18 @@ export function MountainWorld({
   isClimbing     = true,
   allTasksDone   = false,
   onSummitReached,
+  isClimbing?:    boolean
+  isSprinting?:   boolean
+  avatarState?:   AvatarState
+  milestones?:    Milestone[]
+  timerProgress?: number
+}
+
+export function MountainWorld({
+  isClimbing    = true,
+  isSprinting   = false,
+  avatarState   = 'WALKING',
+  milestones    = [],
 }: MountainWorldProps) {
 
   // ── Normal GLB clones ─────────────────────────────────────────────
@@ -337,13 +355,20 @@ export function MountainWorld({
     setGroundGone(true)
   }
 
+  // Track spawned flag positions (in avatar-relative space, stored as scrollY at spawn time)
+  const spawnedFlagsRef = useRef<Map<string, { scrollY: number; mode: 'pop' | 'rise' }>>(new Map())
+
+  // Camera choreography state for flag celebrations
+  const flagCamProgressRef = useRef(0)
+
   useFrame(({ camera }, delta) => {
     frameRef.current++
 
     if (isClimbing) {
-      const dy = CLIMB_SPEED * delta
+      const speedMult = isSprinting ? SPRINT_SPEED_MULT : 1
+      const dy = CLIMB_SPEED * delta * speedMult
       totalScrollY.current += dy
-      totalRot.current     += ROT_SPEED * delta
+      totalRot.current     += ROT_SPEED * delta * speedMult
       for (let i = 0; i < POOL; i++) secY.current[i] -= dy
       cloudY.current -= dy
     }
@@ -391,7 +416,6 @@ export function MountainWorld({
       const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
       const isDay   = hour >= TIME_DAY_START   && hour < TIME_DUSK_START
       const isDusk  = hour >= TIME_DUSK_START  && hour < TIME_NIGHT_START
-      const isNight = hour >= TIME_NIGHT_START || hour < TIME_DAWN_START
 
       const dawnT = isDawn ? (hour - TIME_DAWN_START) / (TIME_DAY_START   - TIME_DAWN_START) : 0
       const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0
@@ -506,6 +530,69 @@ export function MountainWorld({
     const cam = camera as THREE.PerspectiveCamera
     const targetFov = baseFov + (CAM_FOV_SUMMIT - baseFov) * summitT
     if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+    // ── Spawn / despawn flags for milestones ─────────────────────
+    for (const ms of milestones) {
+      if (ms.isRendered && !spawnedFlagsRef.current.has(ms.id)) {
+        const mode = ms.isReached ? 'pop' : 'rise'
+        spawnedFlagsRef.current.set(ms.id, {
+          scrollY: totalScrollY.current,
+          mode,
+        })
+      }
+    }
+    // Clean up flags that are no longer rendered (user clicked Resume)
+    for (const id of spawnedFlagsRef.current.keys()) {
+      const ms = milestones.find(m => m.id === id)
+      if (!ms || !ms.isRendered) {
+        spawnedFlagsRef.current.delete(id)
+      }
+    }
+
+    // ── Camera zoom pan ──────────────────────────────────────────
+    // Flag camera is active during CELEBRATING and IDLE (post-milestone
+    // pause). It releases when avatarState returns to WALKING (Resume).
+    // If the user ticks another task while already zoomed out, keep
+    // the flag cam to avoid a zoom-in-then-out stutter.
+    const wantsFlagCam =
+      avatarState === 'CELEBRATING' ||
+      avatarState === 'IDLE' ||
+      (avatarState === 'SPRINTING' && flagCamProgressRef.current > 0.5)
+
+    if (wantsFlagCam) {
+      // Zoom out to flag celebration view
+      flagCamProgressRef.current = Math.min(1, flagCamProgressRef.current + delta * 1.5)
+    } else {
+      flagCamProgressRef.current = Math.max(0, flagCamProgressRef.current - delta * 1.5)
+    }
+
+    if (flagCamProgressRef.current > 0.01) {
+      // Flag celebration camera takes priority
+      const ft = flagCamProgressRef.current
+      const fe = ft < 0.5 ? 2 * ft * ft : 1 - Math.pow(-2 * ft + 2, 2) / 2
+      _camPosLerp.lerpVectors(CAM_POS, CAM_FLAG_POS, fe)
+      _camLookLerp.lerpVectors(CAM_LOOK, CAM_FLAG_LOOK, fe)
+      camera.position.copy(_camPosLerp)
+      camera.lookAt(_camLookLerp)
+      const cam = camera as THREE.PerspectiveCamera
+      const targetFov = CAM_FOV + (CAM_FLAG_FOV - CAM_FOV) * fe
+      if (Math.abs(cam.fov - targetFov) > 0.01) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+    } else {
+      // Normal intro/climbing camera
+      if (isClimbing) {
+        camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
+      } else {
+        camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
+      }
+      const p = camProgressRef.current
+      const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
+      _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
+      _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
+      camera.position.copy(_camPosLerp)
+      camera.lookAt(_camLookLerp)
+      const cam = camera as THREE.PerspectiveCamera
+      const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
+      if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
+    }
   })
 
   const getSectionTransform = (sectionIndex: number) => {
@@ -533,7 +620,24 @@ export function MountainWorld({
         position={[SUN_LIGHT_RADIUS, SUN_LIGHT_Y, 0]}
       />
 
-      <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} />
+      <Avatar ref={avatarRef} position={AVATAR_POS} scale={AVATAR_SCALE} isClimbing={isClimbing} avatarState={avatarState} />
+
+      {/* Milestone flags — rendered near the avatar position */}
+      {milestones.filter(m => m.isRendered).map((ms) => {
+        const flagData = spawnedFlagsRef.current.get(ms.id)
+        if (!flagData) return null
+        // Place the flag at the avatar's X/Z but slightly offset so it's visible
+        // The Y offset compensates for scroll since spawn
+        const yOffset = flagData.scrollY - totalScrollY.current
+        return (
+          <Flag
+            key={ms.id}
+            position={[AVATAR_POS[0] + 0.8, AVATAR_POS[1] + yOffset, AVATAR_POS[2] - 0.3]}
+            mode={flagData.mode}
+            color={ms.isReached ? '#33bb55' : '#f0c060'}
+          />
+        )
+      })}
 
       {!groundGone && <GroundPlane ref={groundRef} />}
 

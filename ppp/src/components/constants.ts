@@ -240,3 +240,38 @@ export type FloorState = {
   key:    number
   localY: number
 }
+
+// ─────────────────────────────────────────────────────────────────
+// MILESTONE FLAGS
+// ─────────────────────────────────────────────────────────────────
+export type AvatarState = 'WALKING' | 'SPRINTING' | 'CELEBRATING' | 'IDLE'
+
+export interface Milestone {
+  id: string
+  name: string
+  taskIndex: number
+  progressTarget: number   // 0–1 (position along total climb)
+  isRendered: boolean
+  isReached: boolean
+}
+
+// Sprint speed multiplier when user clicks "Done" early
+export const SPRINT_SPEED_MULT = 10
+// Duration of the sprint in seconds (the "2 laps" fast-forward)
+export const SPRINT_DURATION   = 2.0
+// Duration of celebration before camera pulls back
+export const CELEBRATE_DURATION = 1.5
+
+// Camera pull-back position (zoomed out orbital view for flag reveal)
+export const CAM_FLAG_POS  = new THREE.Vector3(18, 6, 18)
+export const CAM_FLAG_LOOK = new THREE.Vector3(6.7, 3, 3.3)
+export const CAM_FLAG_FOV  = 28
+
+// Flag dimensions
+export const FLAG_POLE_HEIGHT  = 1.4
+export const FLAG_POLE_RADIUS  = 0.035
+export const FLAG_CLOTH_WIDTH  = 0.55
+export const FLAG_CLOTH_HEIGHT = 0.32
+
+// How many seconds before timer expiry to start showing the flag (Scenario B)
+export const FLAG_ANTICIPATION_SECONDS = 10
