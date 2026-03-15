@@ -1,4 +1,5 @@
 # Peak Performance Planner
+Made by Kelvin, Yeeheng, Tom, Eric, Jonathan and Jacky
 
 **Peak Performance Planner** is a visual productivity tool that turns goal-setting into a **3D mountain climbing journey**.
 
@@ -132,7 +133,8 @@ The timer helps maintain focus while working through milestones.
   - Authentication
   - Session management
 
-## Other Libraries
+# Authors
+Made by Kelvin, Yeeheng, Tom, Eric, Jonathan and Jacky
 
 - React Router
 - GLTF model loading
