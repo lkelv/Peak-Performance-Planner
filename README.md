@@ -14,8 +14,7 @@ To login:
 - Password: demo67
 
 Notes:
-Computer vision can only detect dark phones or phone cases well
-Press 'H' to toggle the UI on or off
+Computer vision can only detect dark phones or phone cases well, press 'H' to toggle the UI on or off
 
 # How to set up and use locally
 ```
