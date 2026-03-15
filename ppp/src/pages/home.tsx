@@ -110,6 +110,14 @@ export default function Home({
     const allTasksDoneNotifiedRef = useRef(false);
     const totalSeconds = totalHours * 3600;
 
+    const [uiHidden, setUiHidden] = useState(false);
+    console.log('uiHidden state:', uiHidden);
+
+    // Debug state changes
+    useEffect(() => {
+        console.log('uiHidden changed to:', uiHidden);
+    }, [uiHidden]);
+
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
@@ -256,6 +264,24 @@ export default function Home({
         setNewTaskText('');
     };
 
+    // Hotkey for hiding UI
+    useEffect(() => {
+        console.log('Adding hotkey event listener');
+        const handleKeyDown = (e: KeyboardEvent) => {
+            console.log('handleKeyDown called with key:', e.key);
+            if (e.key.toLowerCase() === 'h' && !(e.target as HTMLElement)?.tagName?.match(/input|textarea/i)) {
+                console.log('Toggling UI hidden');
+                setUiHidden(prev => !prev);
+            }
+        };
+
+        document.body.addEventListener('keydown', handleKeyDown);
+        return () => {
+            console.log('Removing hotkey event listener');
+            document.body.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
     const handleAddTime = () => {
         const extraSeconds = (addH * 3600) + (addM * 60);
         if (extraSeconds > 0) {
@@ -351,7 +377,7 @@ export default function Home({
             </div>
 
             {/* Milestones Panel */}
-            <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', flexDirection: 'column' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#f0c060' }}>Milestones</div>
                 <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                     {tasks.map(task => (
@@ -376,7 +402,8 @@ export default function Home({
             </div>
 
             {/* Controls */}
-            <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
+            <div style={{display: uiHidden ? "none" : "flex", position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
+                <button onClick={() => setUiHidden(!uiHidden)} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Toggle UI</button>
                 {!summitReached && !isFinished && (
                     <button
                         onClick={() => {
