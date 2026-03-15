@@ -64,20 +64,43 @@ const Fireworks = () => {
 };
 
 export default function Home({ session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused }: HomeProps) {
-    const [timeLeft, setTimeLeft] = useState(totalHours * 3600);
+    const [timeLeft, setTimeLeft] = useState(Math.round(totalHours * 3600));
     const [tasks, setTasks] = useState<Task[]>(() =>
         startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
     );
+    const [newTaskText, setNewTaskText] = useState('');
+    const [showFinishModal, setShowFinishModal] = useState(false);
+    const [showAddTimeModal, setShowAddTimeModal] = useState(false);
+
+    // States for the "Add Time" inputs
+    const [addH, setAddH] = useState(0);
+    const [addM, setAddM] = useState(30);
 
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
     useEffect(() => {
-        // Now using !isPaused to drive the timer
+        if (timeLeft <= 0 && !isFinished && !showFinishModal) {
+            setShowFinishModal(true);
+            setIsPaused(true);
+        }
+    }, [timeLeft, isFinished, setIsPaused, showFinishModal]);
+
+    useEffect(() => {
         if (isPaused || timeLeft <= 0 || isFinished) return;
         const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
         return () => clearInterval(interval);
     }, [isPaused, timeLeft, isFinished]);
+
+    const handleAddTime = () => {
+        const extraSeconds = (addH * 3600) + (addM * 60);
+        if (extraSeconds > 0) {
+            setTimeLeft(prev => prev + extraSeconds);
+            setShowAddTimeModal(false);
+            setShowFinishModal(false);
+            setIsPaused(false); // Resume climbing automatically
+        }
+    };
 
     const formatTime = (seconds: number) => {
         const hrs = Math.floor(seconds / 3600);
@@ -87,49 +110,115 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
     };
 
     const glassStyle: React.CSSProperties = {
-        background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', borderRadius: 12,
+        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(15px)', borderRadius: 16,
         border: '1px solid rgba(255,255,255,0.1)', color: '#fff', position: 'absolute', zIndex: 10,
+    };
+
+    const modalOverlayStyle: React.CSSProperties = {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+        zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center'
     };
 
     return (
         <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
             {isFinished && <Fireworks />}
 
-            {/* Progress UI */}
+            {/* MODAL 1: Finish Check-in */}
+            {showFinishModal && !isFinished && !showAddTimeModal && (
+                <div style={modalOverlayStyle}>
+                    <div style={{ ...glassStyle, position: 'relative', width: 400, padding: 32, textAlign: 'center', border: '1px solid #f0c060' }}>
+                        <h2 style={{ color: '#f0c060', marginBottom: 8, fontSize: 28 }}>Time's Up!</h2>
+                        <p style={{ fontSize: 14, opacity: 0.8, marginBottom: 24 }}>You've reached the end of your scheduled climb. Are all milestones met?</p>
+
+                        <div style={{ textAlign: 'left', maxHeight: 180, overflowY: 'auto', marginBottom: 24, paddingRight: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12 }}>
+                            {tasks.map(task => (
+                                <div key={task.id} style={{ display: 'flex', gap: 10, marginBottom: 12, opacity: task.completed ? 0.5 : 1 }}>
+                                    <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} style={{ accentColor: '#f0c060' }} />
+                                    <span style={{ fontSize: 14, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => setShowAddTimeModal(true)}
+                            style={{ width: '100%', padding: '12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, color: '#fff', fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}
+                        >
+                            ⏳ Extend Ascent (Add More Time)
+                        </button>
+
+                        <button
+                            onClick={() => { if(isFinished) setShowFinishModal(false); else alert("Finish all tasks to reach the summit!"); }}
+                            style={{ width: '100%', padding: '14px', background: isFinished ? '#f0c060' : '#333', border: 'none', borderRadius: 8, color: '#000', fontWeight: 800, cursor: isFinished ? 'pointer' : 'not-allowed' }}
+                        >
+                            {isFinished ? "Claim Victory" : "Complete Milestones First"}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 2: Add More Time */}
+            {showAddTimeModal && (
+                <div style={modalOverlayStyle}>
+                    <div style={{ ...glassStyle, position: 'relative', width: 350, padding: 32, textAlign: 'center' }}>
+                        <h3 style={{ marginBottom: 20 }}>How much longer?</h3>
+
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 10, opacity: 0.5, display: 'block', marginBottom: 4 }}>HOURS</label>
+                                <input type="number" min="0" value={addH} onChange={e => setAddH(parseInt(e.target.value) || 0)} style={{ width: '100%', background: '#222', border: '1px solid #444', color: '#fff', padding: 10, borderRadius: 6, textAlign: 'center' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 10, opacity: 0.5, display: 'block', marginBottom: 4 }}>MINS</label>
+                                <input type="number" min="0" max="59" value={addM} onChange={e => setAddM(parseInt(e.target.value) || 0)} style={{ width: '100%', background: '#222', border: '1px solid #444', color: '#fff', padding: 10, borderRadius: 6, textAlign: 'center' }} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 12 }}>
+                            <button onClick={() => setShowAddTimeModal(false)} style={{ flex: 1, padding: 12, background: 'transparent', color: '#999', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={handleAddTime} style={{ flex: 1, padding: 12, background: '#f0c060', color: '#000', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Header / Progress */}
             <div style={{ ...glassStyle, top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
                 <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
                     <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
                 </div>
-                {isFinished && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer' }}>Descend to Base Camp</button>}
             </div>
 
-            {/* Timer */}
-            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px' }}>
+            {/* Timer Panel */}
+            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center' }}>
                 <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
             </div>
 
-            {/* Tasks */}
-            <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 280, padding: '20px' }}>
-                {tasks.map(task => (
-                    <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
-                        <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} />
-                        <span style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
-                    </div>
-                ))}
+            {/* Tasks Panel */}
+            <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#f0c060' }}>Milestones</div>
+                <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                    {tasks.map(task => (
+                        <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
+                            <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} style={{ accentColor: '#f0c060' }} />
+                            <span style={{ fontSize: 13, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
+                        </div>
+                    ))}
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); if(!newTaskText.trim()) return; setTasks([...tasks, { id: Date.now().toString(), text: newTaskText, completed: false }]); setNewTaskText(''); }} style={{ display: 'flex', gap: 8 }}>
+                    <input type="text" placeholder="Add milestone..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 12px', color: '#fff', fontSize: 13 }} />
+                    <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
+                </form>
             </div>
 
-            {/* Bottom Controls */}
+            {/* Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
                 {!isFinished && (
-                    <button
-                        onClick={() => setIsPaused(!isPaused)} // This now updates App.tsx state!
-                        style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
-                    >
+                    <button onClick={() => setIsPaused(!isPaused)} style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}
                     </button>
                 )}
-                <button onClick={onSignOut} style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.5)', color: '#fff', cursor: 'pointer' }}>Sign Out</button>
+                <button onClick={onSignOut} style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.4)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Sign Out</button>
             </div>
         </div>
     );
