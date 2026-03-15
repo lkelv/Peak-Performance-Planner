@@ -205,49 +205,6 @@ export default function Home({
         }
     }, [timeLeft]);
 
-    // ── Scenario A: Task completed early (checkbox) ─────────────────
-    const handleTaskToggle = useCallback((taskId: string) => {
-        if (animatingRef.current) return; // Don't allow during animation
-
-        const updatedTasks = tasks.map(t =>
-            t.id === taskId ? { ...t, completed: !t.completed } : t
-        );
-        setTasks(updatedTasks);
-
-        const toggledTask = updatedTasks.find(t => t.id === taskId);
-        if (!toggledTask || !toggledTask.completed) return; // Only trigger on completion, not un-completion
-
-        // Find the milestone for this task
-        const taskIdx = tasks.findIndex(t => t.id === taskId);
-        const milestone = milestones.find(m => m.taskIndex === taskIdx);
-        if (!milestone || milestone.isReached) return;
-
-        // ── Sprint → Flag → Celebrate → Zoom out sequence ──────────
-        animatingRef.current = true;
-
-        // 1. Un-pause (in case we're in a post-milestone pause) and start sprinting
-        setIsPaused(false);
-        changeAvatarState('SPRINTING');
-
-        // 2. After sprint duration, spawn flag and celebrate
-        setTimeout(() => {
-            // Mark milestone as reached and rendered
-            const updated = milestones.map(m =>
-                m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
-            );
-            updateMilestones(updated);
-            changeAvatarState('CELEBRATING');
-
-            // 3. After celebration, switch to idle and zoom out (pause effect)
-            setTimeout(() => {
-                changeAvatarState('IDLE');
-                setIsPaused(true);
-                animatingRef.current = false;
-            }, CELEBRATE_DURATION * 1000);
-
-        }, SPRINT_DURATION * 1000);
-
-    }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused]);
 
     const formatTime = (seconds: number) => {
         const hrs = Math.floor(seconds / 3600);
