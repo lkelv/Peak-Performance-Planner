@@ -134,6 +134,24 @@ export default function Home({
         return () => clearInterval(interval);
     }, [isPaused, timeLeft, isFinished]);
 
+    const updateMilestones = useCallback(
+        (updated: Milestone[]) => {
+            if (typeof onMilestonesChange === 'function') {
+                onMilestonesChange(updated);
+            }
+        },
+        [onMilestonesChange]
+    );
+
+    const changeAvatarState = useCallback(
+        (state: AvatarState) => {
+            if (typeof onAvatarStateChange === 'function') {
+                onAvatarStateChange(state);
+            }
+        },
+        [onAvatarStateChange]
+    );
+
     // ── Scenario B: Timer approaching expiry ────────────────────────
     // When timer is within FLAG_ANTICIPATION_SECONDS of 0, render the
     // next unreached milestone flag with a "rise" animation.
