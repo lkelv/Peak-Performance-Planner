@@ -21,6 +21,14 @@
  *   Intermediate subtask completions still trigger sprint → flag → celebrate
  *   animations. The flag camera zoom and Flag component are used for these.
  *   Only the FINAL subtask triggers the peak spawn instead of a flag.
+ *
+ * PEAK ORIENTATION FIX:
+ *   Mountain sections alternate even/odd orientations (SECTION_ROTATION_Y
+ *   vs SECTION_ROTATION_Y + π). The peak is authored for the "even"
+ *   orientation. If the recycled slot happens to be odd, we snap totalRot
+ *   forward by π at spawn time so the avatar is teleported to the correct
+ *   half. Since all other sections are sunk far below at the same frame,
+ *   the visual jump is invisible.
  */
 
 import { useRef, useState, useMemo } from 'react'
@@ -194,7 +202,7 @@ function BackgroundMountains({ generation }: { generation: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Background trees
+// Background trees — permanent, never remounted
 // ─────────────────────────────────────────────────────────────────
 
 const STATIC_TREE_XZ: [number, number][] = [
@@ -449,6 +457,21 @@ export function MountainWorld({
       if (allTasksDone) {
         peakSpawnedRef.current = true
         peakSlotRef.current    = bot
+
+        // ── PEAK ORIENTATION FIX ────────────────────────────────────
+        // The peak model is authored for the "even" section orientation.
+        // Normal sections alternate: even → SECTION_ROTATION_Y,
+        // odd → SECTION_ROTATION_Y + π. If the slot we just recycled
+        // has an odd secIdx, the avatar is currently in the wrong
+        // half-revolution relative to where the peak entrance faces.
+        // Snap totalRot forward by π to teleport the avatar to the
+        // correct orientation. All other sections are sunk far below
+        // in the same frame, so this jump is completely invisible.
+        const slotSecIdx = secIdx.current[bot]
+        if (slotSecIdx % 2 === 1) {
+          totalRot.current += Math.PI
+        }
+
         peakRotAtSpawn.current = totalRot.current
 
         // Sink every other slot far below so nothing pokes out

@@ -6,7 +6,7 @@ interface FocusCameraProps {
     onDistractionChange?: (isDistracted: boolean) => void;
 }
 
-const DETECTION_INTERVAL_MS = 4000; // Run detection every ~4 seconds (3-5s range)
+const DETECTION_INTERVAL_MS = 3000; // Run detection every ~3 seconds (2-4s range)
 
 const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
