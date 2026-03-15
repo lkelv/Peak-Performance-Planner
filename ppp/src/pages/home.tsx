@@ -63,7 +63,12 @@ const Fireworks = () => {
     return <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 100 }} />;
 };
 
-export default function Home({ session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused }: HomeProps) {
+export default function Home({session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused }: HomeProps) {
+    console.log('Home component rendered with startTasks:', startTasks);
+    if (!startTasks || !Array.isArray(startTasks)) {
+        console.error('startTasks is not an array:', startTasks);
+        return <div>Error: Invalid startTasks</div>;
+    }
     const [timeLeft, setTimeLeft] = useState(Math.round(totalHours * 3600));
     const [tasks, setTasks] = useState<Task[]>(() =>
         startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
@@ -77,6 +82,14 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
     const [addM, setAddM] = useState(30);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const [uiHidden, setUiHidden] = useState(false);
+    console.log('uiHidden state:', uiHidden);
+
+    // Debug state changes
+    useEffect(() => {
+        console.log('uiHidden changed to:', uiHidden);
+    }, [uiHidden]);
 
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
@@ -105,6 +118,24 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
         const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
         return () => clearInterval(interval);
     }, [isPaused, timeLeft, isFinished]);
+
+    // Hotkey for hiding UI
+    useEffect(() => {
+        console.log('Adding hotkey event listener');
+        const handleKeyDown = (e: KeyboardEvent) => {
+            console.log('handleKeyDown called with key:', e.key);
+            if (e.key.toLowerCase() === 'h' && !(e.target as HTMLElement)?.tagName?.match(/input|textarea/i)) {
+                console.log('Toggling UI hidden');
+                setUiHidden(prev => !prev);
+            }
+        };
+
+        document.body.addEventListener('keydown', handleKeyDown);
+        return () => {
+            console.log('Removing hotkey event listener');
+            document.body.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     const handleAddTime = () => {
         const extraSeconds = (addH * 3600) + (addM * 60);
@@ -199,9 +230,8 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
                     </div>
                 </div>
             )}
-
             {/* Top Branding / Progress */}
-            <div style={{ ...glassStyle, top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
                 <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
                     <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
@@ -210,13 +240,13 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
             </div>
 
             {/* Timer Display */}
-            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center', width: 180 }}>
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center', width: 180 }}>
                 <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1, marginBottom: 8 }}>REMAINING</div>
                 <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
             </div>
 
             {/* Milestones Panel */}
-            <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', flexDirection: 'column' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#f0c060' }}>Milestones</div>
                 <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                     {tasks.map(task => (
@@ -233,7 +263,8 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
             </div>
 
             {/* Controls */}
-            <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
+            <div style={{display: uiHidden ? "none" : "flex", position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', gap: 12, alignItems: 'center' }}>
+                <button onClick={() => setUiHidden(!uiHidden)} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Toggle UI</button>
                 {!isFinished && (
                     <button onClick={() => setIsPaused(!isPaused)} style={{ padding: '12px 28px', borderRadius: 12, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.8)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}
