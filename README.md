@@ -112,7 +112,7 @@ The timer helps maintain focus while working through milestones.
 
 ---
 
-# 🛠 Tech Stack
+# Tech Stack
 
 ## Frontend
 
