@@ -3,7 +3,6 @@ import { FaceLandmarker, ObjectDetector, FilesetResolver } from "@mediapipe/task
 import './FocusCamera.css';
 
 interface FocusCameraProps {
-    // We pass this callback so the camera can tell the parent (App/Home) to pause the mountain
     onDistractionChange?: (isDistracted: boolean) => void;
 }
 
@@ -15,8 +14,13 @@ const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
     const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
     const objectDetectorRef = useRef<ObjectDetector | null>(null);
     const requestRef = useRef<number>();
-    
-    // Timer Variables
+
+    // Performance Throttling
+    const lastDetectionTimeRef = useRef<number>(0);
+    const DETECTION_INTERVAL = 2000; // 4.5 seconds
+    const isDistractedRef = useRef<boolean>(false);
+
+    // Timer/State tracking
     const startTimeRef = useRef<number | null>(null);
     const totalFocusedTimeRef = useRef<number>(0);
     const lastDistractedState = useRef<boolean>(false);
@@ -57,7 +61,7 @@ const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
         return () => {
             isMounted = false;
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
-            if (hiddenVideoRef.current && hiddenVideoRef.current.srcObject) {
+            if (hiddenVideoRef.current?.srcObject) {
                 const stream = hiddenVideoRef.current.srcObject as MediaStream;
                 stream.getTracks().forEach(track => track.stop());
             }
@@ -77,29 +81,35 @@ const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
             return;
         }
 
+        const now = performance.now();
         const hiddenVideo = hiddenVideoRef.current;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext("2d")!;
-        const timestamp = performance.now();
 
-        const faceRes = faceLandmarkerRef.current.detectForVideo(hiddenVideo, timestamp);
-        const objRes = objectDetectorRef.current.detectForVideo(hiddenVideo, timestamp);
+        // --- HEAVY DETECTION (Only every 4.5s) ---
+        if (now - lastDetectionTimeRef.current >= DETECTION_INTERVAL) {
+            lastDetectionTimeRef.current = now;
 
-        const isPresent = faceRes.faceLandmarks && faceRes.faceLandmarks.length > 0;
-        const onPhone = objRes.detections.some(d => d.categories[0].categoryName === "cell phone");
-        const isDistracted = onPhone || !isPresent;
+            const faceRes = faceLandmarkerRef.current.detectForVideo(hiddenVideo, now);
+            const objRes = objectDetectorRef.current.detectForVideo(hiddenVideo, now);
 
-        // ONLY trigger state change when the distraction state actually flips (prevents infinite re-renders)
-        if (isDistracted !== lastDistractedState.current) {
-            lastDistractedState.current = isDistracted;
-            if (onDistractionChange) onDistractionChange(isDistracted);
+            const isPresent = faceRes.faceLandmarks && faceRes.faceLandmarks.length > 0;
+            const onPhone = objRes.detections.some(d => d.categories[0].categoryName === "cell phone");
+            const currentDistraction = onPhone || !isPresent;
+
+            if (currentDistraction !== lastDistractedState.current) {
+                lastDistractedState.current = currentDistraction;
+                isDistractedRef.current = currentDistraction;
+                if (onDistractionChange) onDistractionChange(currentDistraction);
+            }
         }
 
+        // --- LIGHTWEIGHT UI RENDERING (Every frame) ---
         ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
 
-        if (isDistracted) {
-            if (Math.floor(Date.now() / 200) % 2 === 0) {
-                ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
+        if (isDistractedRef.current) {
+            if (Math.floor(Date.now() / 400) % 2 === 0) {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.7)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "white";
                 ctx.font = "bold 45px Arial";
@@ -126,11 +136,14 @@ const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
         if (!hiddenVideoRef.current || !canvasRef.current || !webcamRef.current) return;
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            // Lowering resolution constraints significantly boosts performance
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 480, height: 360 }
+            });
             hiddenVideoRef.current.srcObject = stream;
             hiddenVideoRef.current.play();
 
-            const canvasStream = canvasRef.current.captureStream(30);
+            const canvasStream = canvasRef.current.captureStream(24);
             webcamRef.current.srcObject = canvasStream;
             webcamRef.current.play();
 
@@ -158,12 +171,12 @@ const FocusCamera: React.FC<FocusCameraProps> = ({ onDistractionChange }) => {
                 <video ref={webcamRef} className="webcam-video" autoPlay playsInline muted></video>
                 <canvas ref={canvasRef} className="output-canvas"></canvas>
             </div>
-            
+
             <div className="camera-controls">
                 {!isCameraActive ? (
                     <button className="camera-btn" onClick={startCamera}>Start Camera</button>
                 ) : (
-                    <button className="camera-btn" onClick={enterPiP}>Enter Picture-in-Picture</button>
+                    <button className="camera-btn" onClick={enterPiP}>PiP Mode</button>
                 )}
             </div>
             <div className="status-text">Status: {status}</div>

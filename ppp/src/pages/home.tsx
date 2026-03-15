@@ -84,6 +84,7 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
 
     // AI Camera Distraction Handler
     // Automatically triggers the pause state if the user looks away or picks up a phone
+    // Optimized with useCallback to prevent re-renders in the FocusCamera component
     const handleDistraction = useCallback((isDistracted: boolean) => {
         setIsPaused(isDistracted);
     }, [setIsPaused]);
@@ -244,8 +245,9 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
                     <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
                 </form>
             </div>
-            
+
             {/* AI Camera Overlay — bottom-right */}
+            {/* The scaled overlay ensures the PiP and local view don't block the mountain visuals */}
             {!isFinished && (
                 <div style={{ position: 'absolute', bottom: 26, right: 24, zIndex: 10, transform: 'scale(0.4)', transformOrigin: 'bottom right' }}>
                     <FocusCamera onDistractionChange={handleDistraction} />
