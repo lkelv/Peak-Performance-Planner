@@ -6,21 +6,13 @@ interface GoalSetupProps {
 
 export default function GoalSetup({ onComplete }: GoalSetupProps) {
     const [goalName, setGoalName] = useState('');
-    const [hours, setHours] = useState<number>(1);
-    const [minutes, setMinutes] = useState<number>(0);
+    const [hours, setHours] = useState<number>(25);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!goalName.trim()) return;
-
-        // Convert hours + minutes into a total decimal hour value
-        // Example: 1h 30m -> 1 + (30/60) = 1.5 hours
-        const totalDecimalHours = hours + (minutes / 60);
-
-        // Ensure the total is at least 1 minute (0.016 hours) and not over 1000
-        const validatedTime = Math.min(Math.max(totalDecimalHours, 0.016), 1000);
-
-        onComplete(goalName, validatedTime);
+        const validatedHours = Math.min(Math.max(hours, 1), 1000);
+        onComplete(goalName, validatedHours);
     };
 
     const containerStyle: React.CSSProperties = {
@@ -35,7 +27,7 @@ export default function GoalSetup({ onComplete }: GoalSetupProps) {
 
     const cardStyle: React.CSSProperties = {
         width: '100%',
-        maxWidth: '440px',
+        maxWidth: '400px',
         padding: '40px',
         background: 'rgba(255, 255, 255, 0.03)',
         backdropFilter: 'blur(12px)',
@@ -82,36 +74,18 @@ export default function GoalSetup({ onComplete }: GoalSetupProps) {
                         style={inputStyle}
                     />
 
-                    <div style={{ display: 'flex', gap: '16px' }}>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.6 }}>
-                                Hours
-                            </label>
-                            <input
-                                required
-                                type="number"
-                                min="0"
-                                max="1000"
-                                value={hours}
-                                onChange={(e) => setHours(Math.max(0, parseInt(e.target.value) || 0))}
-                                style={inputStyle}
-                            />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.6 }}>
-                                Minutes
-                            </label>
-                            <input
-                                required
-                                type="number"
-                                min="0"
-                                max="59"
-                                value={minutes}
-                                onChange={(e) => setMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                                style={inputStyle}
-                            />
-                        </div>
-                    </div>
+                    <label style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.6 }}>
+                        Estimated Hours (Max 1000)
+                    </label>
+                    <input
+                        required
+                        type="number"
+                        min="1"
+                        max="1000"
+                        value={hours}
+                        onChange={(e) => setHours(parseInt(e.target.value) || 0)}
+                        style={inputStyle}
+                    />
 
                     <button
                         type="submit"
