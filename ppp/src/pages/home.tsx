@@ -4,7 +4,6 @@ import type { AvatarState, Milestone } from '../components/constants';
 import {
     SPRINT_DURATION,
     CELEBRATE_DURATION,
-    FLAG_ANTICIPATION_SECONDS,
 } from '../components/constants';
 
 interface HomeProps {
@@ -141,39 +140,17 @@ export default function Home({
         return () => clearInterval(interval);
     }, [isPaused, timeLeft, isFinished]);
 
-    // Scenario B: Timer approaching expiry (Flags start rendering)
-    useEffect(() => {
-        if (timeLeft <= FLAG_ANTICIPATION_SECONDS && timeLeft > 0) {
-            const nextUnreached = milestones.find(m => !m.isReached && !m.isRendered);
-            if (nextUnreached) {
-                const updated = milestones.map(m =>
-                    m.id === nextUnreached.id ? { ...m, isRendered: true } : m
-                );
-                updateMilestones(updated);
-            }
-        }
-    }, [timeLeft, milestones, updateMilestones]);
-
-    // Timer hits zero trigger for Finish Modal & final milestone
+    // Timer hits zero trigger for Finish Modal
     useEffect(() => {
         if (timeLeft <= 0 && !isFinished && !showFinishModal) {
             setShowFinishModal(true);
             setIsPaused(true);
+            changeAvatarState('IDLE');
 
-            // Mark next unreached milestone as reached for the 3D scene
-            const nextUnreached = milestones.find(m => !m.isReached);
-            if (nextUnreached) {
-                const updated = milestones.map(m =>
-                    m.id === nextUnreached.id ? { ...m, isReached: true, isRendered: true } : m
-                );
-                updateMilestones(updated);
-                changeAvatarState('IDLE');
-            }
-            
             // Force unlock any lingering animation states so checkboxes work instantly in the modal
             animatingRef.current = false;
         }
-    }, [timeLeft, isFinished, showFinishModal, milestones, updateMilestones, changeAvatarState, setIsPaused]);
+    }, [timeLeft, isFinished, showFinishModal, changeAvatarState, setIsPaused]);
 
     // Scenario A: Task completed early (checkbox toggle with animations)
     const handleTaskToggle = useCallback((taskId: string) => {
@@ -260,7 +237,8 @@ export default function Home({
             
             // Reset avatar to walking when adding time
             changeAvatarState('WALKING');
-            const cleared = milestones.map(m => m.isReached ? { ...m, isRendered: false } : m);
+            // Clear isRendered for all milestones so completed tasks can re-trigger flag animations
+            const cleared = milestones.map(m => ({ ...m, isRendered: false }));
             updateMilestones(cleared);
         }
     };
@@ -398,7 +376,7 @@ export default function Home({
                             setIsPaused(!isPaused);
                             if (resuming) {
                                 changeAvatarState('WALKING');
-                                const cleared = milestones.map(m => m.isReached ? { ...m, isRendered: false } : m);
+                                const cleared = milestones.map(m => ({ ...m, isRendered: false }));
                                 updateMilestones(cleared);
                             }
                         }} 
