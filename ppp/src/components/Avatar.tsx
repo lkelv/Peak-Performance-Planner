@@ -13,7 +13,7 @@ interface AvatarProps {
 }
 
 export const Avatar = forwardRef<THREE.Group, AvatarProps>(
-  ({ position = 1, isClimbing = true, avatarState = 'WALKING' }, ref) => {
+  ({ position = [0, 0, 0], isClimbing = true, avatarState = 'WALKING' }, ref) => {
     const group = useRef<THREE.Group>(null)
     const { scene, animations } = useGLTF(AVATAR_GLB)
     const { actions, names } = useAnimations(animations, group)
