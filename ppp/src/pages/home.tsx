@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import FocusCamera from '../components/FocusCamera';
 
 interface HomeProps {
     session: Session;
@@ -81,6 +82,12 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
+    // AI Camera Distraction Handler
+    // Automatically triggers the pause state if the user looks away or picks up a phone
+    const handleDistraction = useCallback((isDistracted: boolean) => {
+        setIsPaused(isDistracted);
+    }, [setIsPaused]);
+
     // Audio Control logic
     useEffect(() => {
         if (!audioRef.current) return;
@@ -143,6 +150,12 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
             <audio ref={audioRef} src="/pppaudioOriginal.mp3" loop preload="auto" />
 
             {isFinished && <Fireworks />}
+
+            {/* Minimal HUD overlay — top-left user info */}
+            <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(6px)', borderRadius: 10, padding: '6px 14px', color: '#fff', fontSize: 13, fontFamily: 'system-ui, sans-serif', zIndex: 10 }}>
+                <span style={{ opacity: 0.7 }}>⛰</span>
+                <span style={{ opacity: 0.85 }}>{session.user.email}</span>
+            </div>
 
             {/* MODAL: Summit Check-in */}
             {showFinishModal && !isFinished && !showAddTimeModal && (
@@ -231,6 +244,13 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
                     <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
                 </form>
             </div>
+            
+            {/* AI Camera Overlay — bottom-right */}
+            {!isFinished && (
+                <div style={{ position: 'absolute', bottom: 26, right: 24, zIndex: 10, transform: 'scale(0.4)', transformOrigin: 'bottom right' }}>
+                    <FocusCamera onDistractionChange={handleDistraction} />
+                </div>
+            )}
 
             {/* Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
