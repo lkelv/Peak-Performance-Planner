@@ -416,11 +416,9 @@ export function MountainWorld({
       worldRef.current.rotation.y = sharedRotY
     }
 
-    // ── Spawn flags for milestones that are rendered ─────────────
+    // ── Spawn / despawn flags for milestones ─────────────────────
     for (const ms of milestones) {
       if (ms.isRendered && !spawnedFlagsRef.current.has(ms.id)) {
-        // Determine mode: if milestone is already reached when rendered, it was a sprint (pop)
-        // If rendered but not yet reached, it's anticipation (rise)
         const mode = ms.isReached ? 'pop' : 'rise'
         spawnedFlagsRef.current.set(ms.id, {
           scrollY: totalScrollY.current,
@@ -428,12 +426,23 @@ export function MountainWorld({
         })
       }
     }
+    // Clean up flags that are no longer rendered (user clicked Resume)
+    for (const id of spawnedFlagsRef.current.keys()) {
+      const ms = milestones.find(m => m.id === id)
+      if (!ms || !ms.isRendered) {
+        spawnedFlagsRef.current.delete(id)
+      }
+    }
 
     // ── Camera zoom pan ──────────────────────────────────────────
-    // Only hold the flag camera during CELEBRATING — once avatar goes
-    // IDLE the normal pause camera takes over, and on resume WALKING
-    // resets everything back to the climbing camera.
-    const wantsFlagCam = avatarState === 'CELEBRATING'
+    // Flag camera is active during CELEBRATING and IDLE (post-milestone
+    // pause). It releases when avatarState returns to WALKING (Resume).
+    // If the user ticks another task while already zoomed out, keep
+    // the flag cam to avoid a zoom-in-then-out stutter.
+    const wantsFlagCam =
+      avatarState === 'CELEBRATING' ||
+      avatarState === 'IDLE' ||
+      (avatarState === 'SPRINTING' && flagCamProgressRef.current > 0.5)
 
     if (wantsFlagCam) {
       // Zoom out to flag celebration view

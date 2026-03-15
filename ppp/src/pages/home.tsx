@@ -183,7 +183,8 @@ export default function Home({
         // ── Sprint → Flag → Celebrate → Zoom out sequence ──────────
         animatingRef.current = true;
 
-        // 1. Freeze timer, start sprinting
+        // 1. Un-pause (in case we're in a post-milestone pause) and start sprinting
+        setIsPaused(false);
         changeAvatarState('SPRINTING');
 
         // 2. After sprint duration, spawn flag and celebrate
@@ -258,9 +259,14 @@ export default function Home({
                         onClick={() => {
                             const resuming = isPaused;
                             setIsPaused(!isPaused);
-                            // When resuming, reset avatar back to walking so climbing restarts
+                            // When resuming, reset avatar back to walking and hide flags
                             if (resuming) {
                                 changeAvatarState('WALKING');
+                                // Unrender all reached milestone flags so they disappear
+                                const cleared = milestones.map(m =>
+                                    m.isReached ? { ...m, isRendered: false } : m
+                                );
+                                updateMilestones(cleared);
                             }
                         }}
                         style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
