@@ -72,13 +72,26 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
     const [showFinishModal, setShowFinishModal] = useState(false);
     const [showAddTimeModal, setShowAddTimeModal] = useState(false);
 
-    // States for the "Add Time" inputs
+    // Time extension inputs
     const [addH, setAddH] = useState(0);
     const [addM, setAddM] = useState(30);
+
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
+    // Audio Control logic
+    useEffect(() => {
+        if (!audioRef.current) return;
+        if (!isPaused && !isFinished && !showFinishModal) {
+            audioRef.current.play().catch(() => console.log("Audio waiting for user interaction"));
+        } else {
+            audioRef.current.pause();
+        }
+    }, [isPaused, isFinished, showFinishModal]);
+
+    // Timer trigger for Finish Modal
     useEffect(() => {
         if (timeLeft <= 0 && !isFinished && !showFinishModal) {
             setShowFinishModal(true);
@@ -86,6 +99,7 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
         }
     }, [timeLeft, isFinished, setIsPaused, showFinishModal]);
 
+    // Main Ticking Logic
     useEffect(() => {
         if (isPaused || timeLeft <= 0 || isFinished) return;
         const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
@@ -98,7 +112,7 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
             setTimeLeft(prev => prev + extraSeconds);
             setShowAddTimeModal(false);
             setShowFinishModal(false);
-            setIsPaused(false); // Resume climbing automatically
+            setIsPaused(false);
         }
     };
 
@@ -109,8 +123,12 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
         return `${hrs > 0 ? hrs + ':' : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
+    const toggleTask = (id: string) => {
+        setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    };
+
     const glassStyle: React.CSSProperties = {
-        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(15px)', borderRadius: 16,
+        background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(15px)', borderRadius: 16,
         border: '1px solid rgba(255,255,255,0.1)', color: '#fff', position: 'absolute', zIndex: 10,
     };
 
@@ -121,20 +139,23 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
 
     return (
         <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+
+            <audio ref={audioRef} src="/pppaudioOriginal.mp3" loop preload="auto" />
+
             {isFinished && <Fireworks />}
 
-            {/* MODAL 1: Finish Check-in */}
+            {/* MODAL: Summit Check-in */}
             {showFinishModal && !isFinished && !showAddTimeModal && (
                 <div style={modalOverlayStyle}>
-                    <div style={{ ...glassStyle, position: 'relative', width: 400, padding: 32, textAlign: 'center', border: '1px solid #f0c060' }}>
-                        <h2 style={{ color: '#f0c060', marginBottom: 8, fontSize: 28 }}>Time's Up!</h2>
-                        <p style={{ fontSize: 14, opacity: 0.8, marginBottom: 24 }}>You've reached the end of your scheduled climb. Are all milestones met?</p>
+                    <div style={{ ...glassStyle, position: 'relative', width: 420, padding: 32, textAlign: 'center', border: '1px solid #f0c060' }}>
+                        <h2 style={{ color: '#f0c060', marginBottom: 8, fontSize: 28 }}>Summit Review</h2>
+                        <p style={{ fontSize: 14, opacity: 0.8, marginBottom: 24 }}>The clock has stopped. Are the milestones complete?</p>
 
-                        <div style={{ textAlign: 'left', maxHeight: 180, overflowY: 'auto', marginBottom: 24, paddingRight: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12 }}>
+                        <div style={{ textAlign: 'left', maxHeight: 180, overflowY: 'auto', marginBottom: 24, padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8 }}>
                             {tasks.map(task => (
-                                <div key={task.id} style={{ display: 'flex', gap: 10, marginBottom: 12, opacity: task.completed ? 0.5 : 1 }}>
-                                    <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} style={{ accentColor: '#f0c060' }} />
-                                    <span style={{ fontSize: 14, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
+                                <div key={task.id} style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                                    <input type="checkbox" checked={task.completed} onChange={() => toggleTask(task.id)} style={{ accentColor: '#f0c060' }} />
+                                    <span style={{ fontSize: 14, textDecoration: task.completed ? 'line-through' : 'none', opacity: task.completed ? 0.5 : 1 }}>{task.text}</span>
                                 </div>
                             ))}
                         </div>
@@ -143,25 +164,24 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
                             onClick={() => setShowAddTimeModal(true)}
                             style={{ width: '100%', padding: '12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, color: '#fff', fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}
                         >
-                            ⏳ Extend Ascent (Add More Time)
+                            ⏳ Need more time? (Extend Ascent)
                         </button>
 
                         <button
-                            onClick={() => { if(isFinished) setShowFinishModal(false); else alert("Finish all tasks to reach the summit!"); }}
+                            onClick={() => { if(isFinished) setShowFinishModal(false); else alert("Please finish your tasks to reach the peak!"); }}
                             style={{ width: '100%', padding: '14px', background: isFinished ? '#f0c060' : '#333', border: 'none', borderRadius: 8, color: '#000', fontWeight: 800, cursor: isFinished ? 'pointer' : 'not-allowed' }}
                         >
-                            {isFinished ? "Claim Victory" : "Complete Milestones First"}
+                            {isFinished ? "Celebrate Success" : "Complete Milestones"}
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* MODAL 2: Add More Time */}
+            {/* MODAL: Extend Ascent */}
             {showAddTimeModal && (
                 <div style={modalOverlayStyle}>
                     <div style={{ ...glassStyle, position: 'relative', width: 350, padding: 32, textAlign: 'center' }}>
-                        <h3 style={{ marginBottom: 20 }}>How much longer?</h3>
-
+                        <h3 style={{ marginBottom: 20 }}>Extend Your Climb</h3>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
                             <div style={{ flex: 1 }}>
                                 <label style={{ fontSize: 10, opacity: 0.5, display: 'block', marginBottom: 4 }}>HOURS</label>
@@ -172,35 +192,36 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
                                 <input type="number" min="0" max="59" value={addM} onChange={e => setAddM(parseInt(e.target.value) || 0)} style={{ width: '100%', background: '#222', border: '1px solid #444', color: '#fff', padding: 10, borderRadius: 6, textAlign: 'center' }} />
                             </div>
                         </div>
-
                         <div style={{ display: 'flex', gap: 12 }}>
-                            <button onClick={() => setShowAddTimeModal(false)} style={{ flex: 1, padding: 12, background: 'transparent', color: '#999', border: 'none', cursor: 'pointer' }}>Cancel</button>
-                            <button onClick={handleAddTime} style={{ flex: 1, padding: 12, background: '#f0c060', color: '#000', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Confirm</button>
+                            <button onClick={() => setShowAddTimeModal(false)} style={{ flex: 1, padding: 12, background: 'transparent', color: '#999', border: 'none', cursor: 'pointer' }}>Back</button>
+                            <button onClick={handleAddTime} style={{ flex: 1, padding: 12, background: '#f0c060', color: '#000', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Header / Progress */}
+            {/* Top Branding / Progress */}
             <div style={{ ...glassStyle, top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
                 <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
                     <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
                 </div>
+                {isFinished && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer', padding: '4px 12px', borderRadius: 4 }}>New Ascent</button>}
             </div>
 
-            {/* Timer Panel */}
-            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center' }}>
+            {/* Timer Display */}
+            <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px', textAlign: 'center', width: 180 }}>
+                <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1, marginBottom: 8 }}>REMAINING</div>
                 <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
             </div>
 
-            {/* Tasks Panel */}
+            {/* Milestones Panel */}
             <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#f0c060' }}>Milestones</div>
                 <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                     {tasks.map(task => (
                         <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
-                            <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} style={{ accentColor: '#f0c060' }} />
+                            <input type="checkbox" checked={task.completed} onChange={() => toggleTask(task.id)} style={{ accentColor: '#f0c060' }} />
                             <span style={{ fontSize: 13, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
                         </div>
                     ))}
@@ -214,11 +235,11 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
             {/* Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
                 {!isFinished && (
-                    <button onClick={() => setIsPaused(!isPaused)} style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                    <button onClick={() => setIsPaused(!isPaused)} style={{ padding: '12px 28px', borderRadius: 12, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.8)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}
                     </button>
                 )}
-                <button onClick={onSignOut} style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.4)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Sign Out</button>
+                <button onClick={onSignOut} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(200,60,60,0.45)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Sign Out</button>
             </div>
         </div>
     );
