@@ -233,7 +233,6 @@ export function MountainWorld({
   isSprinting   = false,
   avatarState   = 'WALKING',
   milestones    = [],
-  timerProgress = 0,
 }: MountainWorldProps) {
 
   // ── GLB clones — castShadow/receiveShadow OFF to prevent texture banding ──
@@ -371,7 +370,6 @@ export function MountainWorld({
       const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
       const isDay   = hour >= TIME_DAY_START   && hour < TIME_DUSK_START
       const isDusk  = hour >= TIME_DUSK_START  && hour < TIME_NIGHT_START
-      const isNight = hour >= TIME_NIGHT_START || hour < TIME_DAWN_START
 
       const dawnT = isDawn ? (hour - TIME_DAWN_START) / (TIME_DAY_START   - TIME_DAWN_START) : 0
       const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0

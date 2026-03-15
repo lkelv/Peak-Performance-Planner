@@ -73,7 +73,7 @@ const Fireworks = () => {
 };
 
 export default function Home({
-    session, onSignOut, goalName, totalHours, startTasks,
+    onSignOut, goalName, totalHours, startTasks,
     isPaused, setIsPaused,
     onAvatarStateChange, onMilestonesChange, onTimerProgress,
 }: HomeProps) {
@@ -81,7 +81,7 @@ export default function Home({
     const [tasks, setTasks] = useState<Task[]>(() =>
         startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
     );
-    const [avatarState, setAvatarState] = useState<AvatarState>('WALKING');
+
     const [milestones, setMilestones] = useState<Milestone[]>(() =>
         startTasks.map((text, i) => ({
             id: `ms-${i}-${Date.now()}`,
@@ -108,7 +108,6 @@ export default function Home({
 
     // Push avatar state changes
     const changeAvatarState = useCallback((state: AvatarState) => {
-        setAvatarState(state);
         onAvatarStateChange(state);
     }, [onAvatarStateChange]);
 
