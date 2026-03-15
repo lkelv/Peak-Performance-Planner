@@ -5,6 +5,7 @@ import {
     SPRINT_DURATION,
     CELEBRATE_DURATION,
 } from '../components/constants';
+import FocusCamera from '../components/FocusCamera';
 
 interface HomeProps {
     session: Session;
@@ -131,6 +132,21 @@ export default function Home({
         setMilestones(ms);
         onMilestonesChange(ms);
     }, [onMilestonesChange]);
+
+    // AI Camera Distraction Handler
+    // Pauses timer and avatar when phone detected; resumes when phone removed
+    const handleDistraction = useCallback((isDistracted: boolean) => {
+        if (isDistracted) {
+            setIsPaused(true);
+            changeAvatarState('IDLE');
+        } else {
+            // Only auto-resume if not in a modal or finished state
+            if (!showFinishModal && !isFinished && !summitReached) {
+                setIsPaused(false);
+                changeAvatarState('WALKING');
+            }
+        }
+    }, [setIsPaused, changeAvatarState, showFinishModal, isFinished, summitReached]);
 
     // ── Notify App.tsx the moment all tasks are done ────────────────
     // This triggers allTasksDone=true → MountainWorld injects peak.glb
@@ -418,6 +434,13 @@ export default function Home({
                     </form>
                 )}
             </div>
+
+            {/* AI Focus Camera Overlay — bottom-right, scaled down */}
+            {!isFinished && !summitReached && (
+                <div style={{ position: 'absolute', bottom: 26, right: 24, zIndex: 10, transform: 'scale(0.4)', transformOrigin: 'bottom right' }}>
+                    <FocusCamera onDistractionChange={handleDistraction} />
+                </div>
+            )}
 
             {/* Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
