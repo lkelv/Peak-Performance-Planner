@@ -100,7 +100,8 @@ export default function Home({
 
     // Fireworks/Resume control
     const [milestoneFireworks, setMilestoneFireworks] = useState(false);
-    const autoResumeTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // FIX: Using ReturnType to avoid NodeJS namespace issues in browser environments
+    const autoResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [addH, setAddH] = useState(0);
     const [addM, setAddM] = useState(30);
@@ -111,12 +112,6 @@ export default function Home({
     const totalSeconds = totalHours * 3600;
 
     const [uiHidden, setUiHidden] = useState(false);
-    console.log('uiHidden state:', uiHidden);
-
-    // Debug state changes
-    useEffect(() => {
-        console.log('uiHidden changed to:', uiHidden);
-    }, [uiHidden]);
 
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
@@ -142,7 +137,6 @@ export default function Home({
         }
     }, [isFinished, onAllTasksDone]);
 
-    // Active if physically at summit OR if an intermediate milestone was just checked
     const showFireworks = summitReached || milestoneFireworks;
 
     useEffect(() => {
@@ -169,7 +163,6 @@ export default function Home({
         }
     }, [timeLeft, isFinished, showFinishModal, changeAvatarState, setIsPaused]);
 
-    // Function to handle the transition back to walking
     const handleResumeClimb = useCallback(() => {
         if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
         setMilestoneFireworks(false);
@@ -223,23 +216,17 @@ export default function Home({
                 );
                 updateMilestones(updated);
                 changeAvatarState('CELEBRATING');
-
-                // TRIGGER FIREWORKS HERE
                 setMilestoneFireworks(true);
 
                 setTimeout(() => {
                     changeAvatarState('IDLE');
                     setIsPaused(true);
-
-                    // Start 10s auto-resume timer
                     autoResumeTimerRef.current = setTimeout(() => {
                         handleResumeClimb();
                     }, 10000);
-
                 }, CELEBRATE_DURATION * 1000);
             }, SPRINT_DURATION * 1000);
         }
-
     }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused, timeLeft, showFinishModal, handleResumeClimb]);
 
     const handleAddTask = (e: React.FormEvent) => {
@@ -264,22 +251,14 @@ export default function Home({
         setNewTaskText('');
     };
 
-    // Hotkey for hiding UI
     useEffect(() => {
-        console.log('Adding hotkey event listener');
         const handleKeyDown = (e: KeyboardEvent) => {
-            console.log('handleKeyDown called with key:', e.key);
             if (e.key.toLowerCase() === 'h' && !(e.target as HTMLElement)?.tagName?.match(/input|textarea/i)) {
-                console.log('Toggling UI hidden');
                 setUiHidden(prev => !prev);
             }
         };
-
         document.body.addEventListener('keydown', handleKeyDown);
-        return () => {
-            console.log('Removing hotkey event listener');
-            document.body.removeEventListener('keydown', handleKeyDown);
-        };
+        return () => document.body.removeEventListener('keydown', handleKeyDown);
     }, []);
 
     const handleAddTime = () => {
@@ -377,7 +356,7 @@ export default function Home({
             </div>
 
             {/* Milestones Panel */}
-            <div style={{ ...glassStyle, display: uiHidden ? "none" : "block", top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', flexDirection: 'column' }}>
+            <div style={{ ...glassStyle, display: uiHidden ? "none" : "flex", top: '50%', right: 24, transform: 'translateY(-50%)', width: 300, padding: '20px', maxHeight: '70vh', flexDirection: 'column' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#f0c060' }}>Milestones</div>
                 <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                     {tasks.map(task => (
@@ -402,13 +381,21 @@ export default function Home({
             </div>
 
             {/* Controls */}
-            <div style={{display: uiHidden ? "none" : "flex", position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
+            {/* FIX: Combined display properties and fixed layout */}
+            <div style={{
+                display: uiHidden ? "none" : "flex",
+                position: 'absolute',
+                bottom: 28,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                gap: 12
+            }}>
                 <button onClick={() => setUiHidden(!uiHidden)} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Toggle UI</button>
                 {!summitReached && !isFinished && (
                     <button
                         onClick={() => {
                             if (milestoneFireworks) {
-                                handleResumeClimb(); // Manual Skip
+                                handleResumeClimb();
                                 return;
                             }
                             if (animatingRef.current) return;
@@ -425,7 +412,7 @@ export default function Home({
                         {milestoneFireworks ? '▶ Resume Now' : !isPaused ? '⏸ Pause' : '▶ Resume'}
                     </button>
                 )}
-                <button onClick={onSignOut} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(200,60,60,0.45)', color: '#fff', fontWeight: 700 }}>Sign Out</button>
+                <button onClick={onSignOut} style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(200,60,60,0.45)', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer' }}>Sign Out</button>
             </div>
         </div>
     );
