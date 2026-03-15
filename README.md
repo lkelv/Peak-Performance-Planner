@@ -13,6 +13,10 @@ To login:
 - Email: test@demo.com
 - Password: demo67
 
+Notes:
+Computer vision can only detect dark phones or phone cases well
+Press 'H' to toggle the UI on or off
+
 # How to set up and use locally
 ```
 cd ppp
