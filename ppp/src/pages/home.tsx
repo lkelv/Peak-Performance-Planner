@@ -156,30 +156,29 @@ export default function Home({
 
     // Timer hits zero trigger for Finish Modal & final milestone
     useEffect(() => {
-        if (timeLeft <= 0 && !isFinished && !showFinishModal && !animatingRef.current) {
+        if (timeLeft <= 0 && !isFinished && !showFinishModal) {
             setShowFinishModal(true);
             setIsPaused(true);
 
             // Mark next unreached milestone as reached for the 3D scene
             const nextUnreached = milestones.find(m => !m.isReached);
             if (nextUnreached) {
-                animatingRef.current = true;
                 const updated = milestones.map(m =>
                     m.id === nextUnreached.id ? { ...m, isReached: true, isRendered: true } : m
                 );
                 updateMilestones(updated);
                 changeAvatarState('IDLE');
-
-                setTimeout(() => {
-                    animatingRef.current = false;
-                }, CELEBRATE_DURATION * 1000);
             }
+            
+            // Force unlock any lingering animation states so checkboxes work instantly in the modal
+            animatingRef.current = false;
         }
     }, [timeLeft, isFinished, showFinishModal, milestones, updateMilestones, changeAvatarState, setIsPaused]);
 
     // Scenario A: Task completed early (checkbox toggle with animations)
     const handleTaskToggle = useCallback((taskId: string) => {
-        if (animatingRef.current) return; // Prevent interruption
+        // Prevent interruption ONLY if we are actively animating and not in the finish modal
+        if (animatingRef.current && !showFinishModal && timeLeft > 0) return; 
 
         const updatedTasks = tasks.map(t =>
             t.id === taskId ? { ...t, completed: !t.completed } : t
@@ -192,6 +191,16 @@ export default function Home({
         const taskIdx = updatedTasks.findIndex(t => t.id === taskId);
         const milestone = milestones.find(m => m.taskIndex === taskIdx);
         if (!milestone || milestone.isReached) return;
+
+        // If the timer is out or the modal is showing, bypass the 3D animation entirely
+        // and just mark the milestone as reached under the hood.
+        if (timeLeft <= 0 || showFinishModal) {
+            const updated = milestones.map(m =>
+                m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
+            );
+            updateMilestones(updated);
+            return;
+        }
 
         // Sprint → Flag → Celebrate → Zoom out sequence
         animatingRef.current = true;
@@ -212,7 +221,7 @@ export default function Home({
             }, CELEBRATE_DURATION * 1000);
         }, SPRINT_DURATION * 1000);
 
-    }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused]);
+    }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused, timeLeft, showFinishModal]);
 
     const handleAddTask = (e: React.FormEvent) => {
         e.preventDefault();
@@ -294,8 +303,7 @@ export default function Home({
                                         type="checkbox" 
                                         checked={task.completed} 
                                         onChange={() => handleTaskToggle(task.id)} 
-                                        disabled={animatingRef.current}
-                                        style={{ accentColor: '#f0c060', cursor: animatingRef.current ? 'not-allowed' : 'pointer' }} 
+                                        style={{ accentColor: '#f0c060', cursor: 'pointer' }} 
                                     />
                                     <span style={{ fontSize: 14, textDecoration: task.completed ? 'line-through' : 'none', opacity: task.completed ? 0.5 : 1 }}>{task.text}</span>
                                 </div>
@@ -367,8 +375,8 @@ export default function Home({
                                 type="checkbox" 
                                 checked={task.completed} 
                                 onChange={() => handleTaskToggle(task.id)} 
-                                disabled={animatingRef.current}
-                                style={{ accentColor: '#f0c060', cursor: animatingRef.current ? 'not-allowed' : 'pointer' }} 
+                                disabled={animatingRef.current && timeLeft > 0 && !showFinishModal}
+                                style={{ accentColor: '#f0c060', cursor: (animatingRef.current && timeLeft > 0 && !showFinishModal) ? 'not-allowed' : 'pointer' }} 
                             />
                             <span style={{ fontSize: 13, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
                         </div>
