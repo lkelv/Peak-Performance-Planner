@@ -75,22 +75,12 @@ const Fireworks = () => {
 export default function Home({
     onSignOut, goalName, totalHours, startTasks,
     isPaused, setIsPaused,
-    onAvatarStateChange, onMilestonesChange, onTimerProgress,
+    onAvatarStateChange, onMilestonesChange, onTimerProgress
 }: HomeProps) {
-    const [timeLeft, setTimeLeft] = useState(totalHours * 3600);
+    const [timeLeft, setTimeLeft] = useState(Math.round(totalHours * 3600));
     const [tasks, setTasks] = useState<Task[]>(() =>
         startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
     );
-    const [newTaskText, setNewTaskText] = useState('');
-    const [showFinishModal, setShowFinishModal] = useState(false);
-    const [showAddTimeModal, setShowAddTimeModal] = useState(false);
-
-    // Time extension inputs
-    const [addH, setAddH] = useState(0);
-    const [addM, setAddM] = useState(30);
-
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-
     const [milestones, setMilestones] = useState<Milestone[]>(() =>
         startTasks.map((text, i) => ({
             id: `ms-${i}-${Date.now()}`,
@@ -102,23 +92,37 @@ export default function Home({
         }))
     );
 
-    // TODO: Wire up avatar/milestone/timer callbacks with real behavior.
-    // This no-op effect ensures these props are treated as used so that
-    // noUnusedLocals/noUnusedParameters do not fail the build.
-    useEffect(() => {
-        // intentionally left blank
-    }, [onAvatarStateChange, onMilestonesChange, onTimerProgress]);
+    const [newTaskText, setNewTaskText] = useState('');
+    const [showFinishModal, setShowFinishModal] = useState(false);
+    const [showAddTimeModal, setShowAddTimeModal] = useState(false);
+    
+    // Time extension inputs
+    const [addH, setAddH] = useState(0);
+    const [addM, setAddM] = useState(30);
 
-    // Track whether we're in a milestone animation sequence
+    const audioRef = useRef<HTMLAudioElement | null>(null);
     const animatingRef = useRef(false);
     const totalSeconds = totalHours * 3600;
 
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
-    const handleAddTime = useCallback((additionalSeconds: number) => {
-        setTimeLeft((prev) => Math.max(prev + additionalSeconds, 0));
-    }, [setTimeLeft]);
+    // Push timer progress to 3D scene (0–1)
+    useEffect(() => {
+        const progress = 1 - (timeLeft / totalSeconds);
+        onTimerProgress(Math.max(0, Math.min(1, progress)));
+    }, [timeLeft, totalSeconds, onTimerProgress]);
+
+    // Push avatar state changes safely
+    const changeAvatarState = useCallback((state: AvatarState) => {
+        onAvatarStateChange(state);
+    }, [onAvatarStateChange]);
+
+    // Push milestone changes safely
+    const updateMilestones = useCallback((ms: Milestone[]) => {
+        setMilestones(ms);
+        onMilestonesChange(ms);
+    }, [onMilestonesChange]);
 
     // Audio Control logic
     useEffect(() => {
@@ -130,61 +134,14 @@ export default function Home({
         }
     }, [isPaused, isFinished, showFinishModal]);
 
-    const updateMilestones = useCallback(
-        (updated: Milestone[]) => {
-            setMilestones(updated);
-            onMilestonesChange(updated);
-        },
-        [onMilestonesChange]
-    );
-
-    // Timer trigger for Finish Modal
-    useEffect(() => {
-        if (timeLeft <= 0 && !isFinished && !showFinishModal) {
-            setShowFinishModal(true);
-            setIsPaused(true);
-        }
-    }, [timeLeft, isFinished, setIsPaused, showFinishModal]);
-
-    // Report timer progress based on elapsed time
-    useEffect(() => {
-        if (totalSeconds > 0) {
-            const elapsed = totalSeconds - timeLeft;
-            const progress = Math.min(Math.max(elapsed / totalSeconds, 0), 1);
-            onTimerProgress(progress);
-        } else {
-            onTimerProgress(0);
-        }
-    }, [timeLeft, totalSeconds, onTimerProgress]);
-
     // Main Ticking Logic
     useEffect(() => {
-        if (isPaused || timeLeft <= 0 || isFinished) return;
+        if (isPaused || timeLeft <= 0 || isFinished || animatingRef.current) return;
         const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
         return () => clearInterval(interval);
     }, [isPaused, timeLeft, isFinished]);
 
-    const updateMilestones = useCallback(
-        (updated: Milestone[]) => {
-            if (typeof onMilestonesChange === 'function') {
-                onMilestonesChange(updated);
-            }
-        },
-        [onMilestonesChange]
-    );
-
-    const changeAvatarState = useCallback(
-        (state: AvatarState) => {
-            if (typeof onAvatarStateChange === 'function') {
-                onAvatarStateChange(state);
-            }
-        },
-        [onAvatarStateChange]
-    );
-
-    // ── Scenario B: Timer approaching expiry ────────────────────────
-    // When timer is within FLAG_ANTICIPATION_SECONDS of 0, render the
-    // next unreached milestone flag with a "rise" animation.
+    // Scenario B: Timer approaching expiry (Flags start rendering)
     useEffect(() => {
         if (timeLeft <= FLAG_ANTICIPATION_SECONDS && timeLeft > 0) {
             const nextUnreached = milestones.find(m => !m.isReached && !m.isRendered);
@@ -195,12 +152,15 @@ export default function Home({
                 updateMilestones(updated);
             }
         }
-    }, [timeLeft]);
+    }, [timeLeft, milestones, updateMilestones]);
 
-    // ── Scenario B: Timer hits zero ─────────────────────────────────
+    // Timer hits zero trigger for Finish Modal & final milestone
     useEffect(() => {
-        if (timeLeft <= 0 && !isFinished && !animatingRef.current) {
-            // Mark next unreached milestone as reached
+        if (timeLeft <= 0 && !isFinished && !showFinishModal && !animatingRef.current) {
+            setShowFinishModal(true);
+            setIsPaused(true);
+
+            // Mark next unreached milestone as reached for the 3D scene
             const nextUnreached = milestones.find(m => !m.isReached);
             if (nextUnreached) {
                 animatingRef.current = true;
@@ -210,26 +170,97 @@ export default function Home({
                 updateMilestones(updated);
                 changeAvatarState('IDLE');
 
-                // Camera pull-back effect (same as pause)
-                setIsPaused(true);
-
                 setTimeout(() => {
                     animatingRef.current = false;
-                }, (CELEBRATE_DURATION) * 1000);
+                }, CELEBRATE_DURATION * 1000);
             }
         }
-    }, [timeLeft]);
+    }, [timeLeft, isFinished, showFinishModal, milestones, updateMilestones, changeAvatarState, setIsPaused]);
 
+    // Scenario A: Task completed early (checkbox toggle with animations)
+    const handleTaskToggle = useCallback((taskId: string) => {
+        if (animatingRef.current) return; // Prevent interruption
+
+        const updatedTasks = tasks.map(t =>
+            t.id === taskId ? { ...t, completed: !t.completed } : t
+        );
+        setTasks(updatedTasks);
+
+        const toggledTask = updatedTasks.find(t => t.id === taskId);
+        if (!toggledTask || !toggledTask.completed) return; // Only animate on completion
+
+        const taskIdx = updatedTasks.findIndex(t => t.id === taskId);
+        const milestone = milestones.find(m => m.taskIndex === taskIdx);
+        if (!milestone || milestone.isReached) return;
+
+        // Sprint → Flag → Celebrate → Zoom out sequence
+        animatingRef.current = true;
+        setIsPaused(false);
+        changeAvatarState('SPRINTING');
+
+        setTimeout(() => {
+            const updated = milestones.map(m =>
+                m.id === milestone.id ? { ...m, isReached: true, isRendered: true } : m
+            );
+            updateMilestones(updated);
+            changeAvatarState('CELEBRATING');
+
+            setTimeout(() => {
+                changeAvatarState('IDLE');
+                setIsPaused(true);
+                animatingRef.current = false;
+            }, CELEBRATE_DURATION * 1000);
+        }, SPRINT_DURATION * 1000);
+
+    }, [tasks, milestones, changeAvatarState, updateMilestones, setIsPaused]);
+
+    const handleAddTask = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newTaskText.trim()) return;
+
+        const newTask = { id: Date.now().toString(), text: newTaskText, completed: false };
+        const newTasks = [...tasks, newTask];
+        setTasks(newTasks);
+
+        // Map the new task into the 3D milestone system
+        const newMilestone: Milestone = {
+            id: `ms-added-${Date.now()}`,
+            name: newTaskText,
+            taskIndex: newTasks.length - 1,
+            progressTarget: 0, // Gets re-calculated below
+            isRendered: false,
+            isReached: false,
+        };
+
+        const updatedMilestones = [...milestones, newMilestone].map((m, idx) => ({
+            ...m,
+            progressTarget: (idx + 1) / newTasks.length
+        }));
+
+        updateMilestones(updatedMilestones);
+        setNewTaskText('');
+    };
+
+    const handleAddTime = () => {
+        const extraSeconds = (addH * 3600) + (addM * 60);
+        if (extraSeconds > 0) {
+            setTimeLeft(prev => prev + extraSeconds);
+            setShowAddTimeModal(false);
+            setShowFinishModal(false);
+            setIsPaused(false);
+            
+            // Reset avatar to walking when adding time
+            changeAvatarState('WALKING');
+            const cleared = milestones.map(m => m.isReached ? { ...m, isRendered: false } : m);
+            updateMilestones(cleared);
+        }
+    };
 
     const formatTime = (seconds: number) => {
         const hrs = Math.floor(seconds / 3600);
         const mins = Math.floor((seconds % 3600) / 60);
         const secs = seconds % 60;
         return `${hrs > 0 ? hrs + ':' : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const toggleTask = (id: string) => {
-        setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
     };
 
     const glassStyle: React.CSSProperties = {
@@ -259,7 +290,13 @@ export default function Home({
                         <div style={{ textAlign: 'left', maxHeight: 180, overflowY: 'auto', marginBottom: 24, padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8 }}>
                             {tasks.map(task => (
                                 <div key={task.id} style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-                                    <input type="checkbox" checked={task.completed} onChange={() => toggleTask(task.id)} style={{ accentColor: '#f0c060' }} />
+                                    <input 
+                                        type="checkbox" 
+                                        checked={task.completed} 
+                                        onChange={() => handleTaskToggle(task.id)} 
+                                        disabled={animatingRef.current}
+                                        style={{ accentColor: '#f0c060', cursor: animatingRef.current ? 'not-allowed' : 'pointer' }} 
+                                    />
                                     <span style={{ fontSize: 14, textDecoration: task.completed ? 'line-through' : 'none', opacity: task.completed ? 0.5 : 1 }}>{task.text}</span>
                                 </div>
                             ))}
@@ -326,12 +363,18 @@ export default function Home({
                 <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                     {tasks.map(task => (
                         <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
-                            <input type="checkbox" checked={task.completed} onChange={() => toggleTask(task.id)} style={{ accentColor: '#f0c060' }} />
+                            <input 
+                                type="checkbox" 
+                                checked={task.completed} 
+                                onChange={() => handleTaskToggle(task.id)} 
+                                disabled={animatingRef.current}
+                                style={{ accentColor: '#f0c060', cursor: animatingRef.current ? 'not-allowed' : 'pointer' }} 
+                            />
                             <span style={{ fontSize: 13, textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
                         </div>
                     ))}
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); if(!newTaskText.trim()) return; setTasks([...tasks, { id: Date.now().toString(), text: newTaskText, completed: false }]); setNewTaskText(''); }} style={{ display: 'flex', gap: 8 }}>
+                <form onSubmit={handleAddTask} style={{ display: 'flex', gap: 8 }}>
                     <input type="text" placeholder="Add milestone..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 12px', color: '#fff', fontSize: 13 }} />
                     <button type="submit" style={{ background: '#f0c060', border: 'none', borderRadius: 6, color: '#000', padding: '0 12px', fontWeight: 700, cursor: 'pointer' }}>+</button>
                 </form>
@@ -340,21 +383,19 @@ export default function Home({
             {/* Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
                 {!isFinished && (
-                    <button
+                    <button 
                         onClick={() => {
+                            if (animatingRef.current) return;
                             const resuming = isPaused;
                             setIsPaused(!isPaused);
-                            // When resuming, reset avatar back to walking and hide flags
                             if (resuming) {
                                 changeAvatarState('WALKING');
-                                // Unrender all reached milestone flags so they disappear
-                                const cleared = milestones.map(m =>
-                                    m.isReached ? { ...m, isRendered: false } : m
-                                );
+                                const cleared = milestones.map(m => m.isReached ? { ...m, isRendered: false } : m);
                                 updateMilestones(cleared);
                             }
-                        }}
-                        style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
+                        }} 
+                        disabled={animatingRef.current}
+                        style={{ padding: '12px 28px', borderRadius: 12, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.8)', border: 'none', color: '#fff', fontWeight: 700, cursor: animatingRef.current ? 'not-allowed' : 'pointer' }}
                     >
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}
                     </button>
