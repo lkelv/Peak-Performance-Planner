@@ -109,6 +109,10 @@ export default function Home({
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
+    const handleAddTime = useCallback((additionalSeconds: number) => {
+        setTimeLeft((prev) => Math.max(prev + additionalSeconds, 0));
+    }, [setTimeLeft]);
+
     // Audio Control logic
     useEffect(() => {
         if (!audioRef.current) return;
