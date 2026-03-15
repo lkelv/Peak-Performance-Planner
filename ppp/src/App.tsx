@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
-import LoginPage from './components/LoginPage';
+import LoginPage from './pages/LoginPage';
 import GoalSetup from './components/GoalSetup';
 import MilestoneSetup from './components/MilestoneSetup';
 import Home from './pages/home';
