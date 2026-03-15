@@ -9,6 +9,14 @@
  *     so it can read totalRot each frame and track the sun's position,
  *     keeping shadows on the opposite side from the sun at all times.
  *   - No duplicate light sets — the old hardcoded lights are gone.
+ *
+ * Props added for peak / summit flow:
+ *   allTasksDone    — passed down to MountainWorld; when true the next
+ *                     recycled section becomes peak.glb.
+ *   onSummitReached — callback fired once the avatar has walked
+ *                     PEAK_STOP_AFTER_HALF_REV revolutions on the peak.
+ *                     The parent (home.tsx) stops climbing and triggers
+ *                     the fireworks overlay.
  */
 
 import { Suspense, useMemo, useRef } from 'react'
@@ -16,7 +24,6 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { SkyScene } from './SkyScene'
 import { MountainWorld } from './MountainWorld'
 import { CAM_POS, CAM_FOV } from './constants'
-import type { AvatarState, Milestone } from './constants'
 import * as THREE from 'three'
 import {
   TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
@@ -58,6 +65,7 @@ function DynamicLights() {
     const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
     const isDay   = hour >= TIME_DAY_START   && hour < TIME_DUSK_START
     const isDusk  = hour >= TIME_DUSK_START  && hour < TIME_NIGHT_START
+    const isNight = hour >= TIME_NIGHT_START || hour < TIME_DAWN_START
 
     const dawnT = isDawn ? (hour - TIME_DAWN_START) / (TIME_DAY_START   - TIME_DAWN_START) : 0
     const duskT = isDusk ? (hour - TIME_DUSK_START) / (TIME_NIGHT_START - TIME_DUSK_START) : 0
@@ -102,16 +110,9 @@ function DynamicLights() {
 
   return (
     <>
-      {/* Ambient — colour + intensity tracks time of day */}
       <ambientLight ref={ambientRef} color={AMBIENT_COLOR_DAY} intensity={AMBIENT_INTENSITY_DAY} />
-
-      {/* Cool fill from the opposite side — no shadows, just prevents pure black faces */}
       <directionalLight ref={fillLightRef} position={[-20, 20, -10]} intensity={0.4} color="#c8d8f0" />
-
-      {/* Moonlight fill — only active at night */}
       <directionalLight ref={moonLightRef} position={[-40, 60, -30]} color={MOONLIGHT_COLOR} intensity={0} />
-
-      {/* Hemisphere — sky/ground colour tracks time of day */}
       <hemisphereLight ref={hemiRef} args={[HEMI_SKY_DAY, HEMI_GND_DAY, HEMI_INT_DAY]} />
     </>
   )
@@ -136,23 +137,19 @@ function CameraController({ viewMode }: { viewMode: 'wide' | 'close' }) {
 // MountainScene
 // ─────────────────────────────────────────────────────────────────
 interface MountainSceneProps {
-  height?:       number
-  isClimbing?:   boolean
-  isSprinting?:  boolean
-  viewMode?:     'wide' | 'close'
-  avatarState?:  AvatarState
-  milestones?:   Milestone[]
-  timerProgress?: number
+  height?:          number
+  isClimbing?:      boolean
+  viewMode?:        'wide' | 'close'
+  allTasksDone?:    boolean        // passed straight to MountainWorld
+  onSummitReached?: () => void     // passed straight to MountainWorld
 }
 
 export default function MountainScene({
-  height        = window.innerHeight,
-  isClimbing    = true,
-  isSprinting   = false,
-  viewMode      = 'close',
-  avatarState   = 'WALKING',
-  milestones    = [],
-  timerProgress = 0,
+  height          = window.innerHeight,
+  isClimbing      = true,
+  viewMode        = 'close',
+  allTasksDone    = false,
+  onSummitReached,
 }: MountainSceneProps) {
   return (
     <div style={{ width: '100%', height, position: 'relative' }}>
@@ -177,16 +174,14 @@ export default function MountainScene({
 
         {/*
           MountainWorld owns the sun directional light (castShadow).
-          It updates the light position each frame based on totalRot
-          so the shadow always falls opposite the sun.
+          allTasksDone triggers peak.glb injection on the next recycle.
+          onSummitReached fires after PEAK_STOP_AFTER_HALF_REV revolutions.
         */}
         <Suspense fallback={null}>
           <MountainWorld
             isClimbing={isClimbing}
-            isSprinting={isSprinting}
-            avatarState={avatarState}
-            milestones={milestones}
-            timerProgress={timerProgress}
+            allTasksDone={allTasksDone}
+            onSummitReached={onSummitReached}
           />
         </Suspense>
       </Canvas>
