@@ -131,6 +131,17 @@ export default function Home({
         }
     }, [timeLeft, isFinished, setIsPaused, showFinishModal]);
 
+    // Report timer progress based on elapsed time
+    useEffect(() => {
+        if (totalSeconds > 0) {
+            const elapsed = totalSeconds - timeLeft;
+            const progress = Math.min(Math.max(elapsed / totalSeconds, 0), 1);
+            onTimerProgress(progress);
+        } else {
+            onTimerProgress(0);
+        }
+    }, [timeLeft, totalSeconds, onTimerProgress]);
+
     // Main Ticking Logic
     useEffect(() => {
         if (isPaused || timeLeft <= 0 || isFinished) return;
