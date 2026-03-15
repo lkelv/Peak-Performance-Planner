@@ -9,6 +9,14 @@ interface HomeProps {
     startTasks: string[];
     isPaused: boolean;
     setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
+    // Called the moment the last subtask checkbox is ticked.
+    // App.tsx uses this to set allTasksDone=true, which tells MountainWorld
+    // to inject peak.glb on the next section recycle.
+    onAllTasksDone: () => void;
+    // Set to true by App.tsx once MountainWorld fires onSummitReached —
+    // i.e. the avatar has physically walked onto the peak. This is what
+    // triggers the fireworks and the "SUMMIT REACHED" banner.
+    summitReached: boolean;
 }
 
 interface Task {
@@ -63,17 +71,42 @@ const Fireworks = () => {
     return <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 100 }} />;
 };
 
-export default function Home({ session, onSignOut, goalName, totalHours, startTasks, isPaused, setIsPaused }: HomeProps) {
+export default function Home({
+    session,
+    onSignOut,
+    goalName,
+    totalHours,
+    startTasks,
+    isPaused,
+    setIsPaused,
+    onAllTasksDone,
+    summitReached,
+}: HomeProps) {
     const [timeLeft, setTimeLeft] = useState(totalHours * 3600);
     const [tasks, setTasks] = useState<Task[]>(() =>
         startTasks.map((text, i) => ({ id: `init-${i}-${Date.now()}`, text, completed: false }))
     );
 
+    // Ensures onAllTasksDone fires exactly once, not on every re-render.
+    const allTasksDoneNotifiedRef = useRef(false);
+
     const progressPercent = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
     const isFinished = progressPercent === 100 && tasks.length > 0;
 
+    // The moment all checkboxes are ticked, notify App.tsx so it can set
+    // allTasksDone=true → MountainWorld injects peak.glb on next recycle.
     useEffect(() => {
-        // Now using !isPaused to drive the timer
+        if (isFinished && !allTasksDoneNotifiedRef.current) {
+            allTasksDoneNotifiedRef.current = true;
+            onAllTasksDone();
+        }
+    }, [isFinished, onAllTasksDone]);
+
+    // Fireworks play once the avatar physically arrives at the summit.
+    // summitReached is driven by MountainWorld → App.tsx → here.
+    const showFireworks = summitReached;
+
+    useEffect(() => {
         if (isPaused || timeLeft <= 0 || isFinished) return;
         const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
         return () => clearInterval(interval);
@@ -93,27 +126,55 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
 
     return (
         <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
-            {isFinished && <Fireworks />}
+
+            {showFireworks && <Fireworks />}
 
             {/* Progress UI */}
-            <div style={{ ...glassStyle, top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center', border: isFinished ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)' }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: isFinished ? '#f0c060' : '#fff' }}>{isFinished ? `SUMMIT REACHED` : goalName}</div>
-                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
-                    <div style={{ width: `${progressPercent}%`, height: '100%', background: isFinished ? '#64c878' : '#f0c060', transition: 'width 0.4s ease' }} />
+            <div style={{
+                ...glassStyle,
+                top: 16, left: '50%', transform: 'translateX(-50%)', width: 380, padding: '16px 20px', textAlign: 'center',
+                border: showFireworks ? '1px solid #f0c060' : '1px solid rgba(255,255,255,0.1)',
+            }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: showFireworks ? '#f0c060' : '#fff' }}>
+                    {summitReached
+                        ? 'SUMMIT REACHED 🏔'
+                        : isFinished
+                            ? 'TASKS COMPLETE — REACHING SUMMIT…'
+                            : goalName}
                 </div>
-                {isFinished && <button onClick={() => window.location.href = '/setup'} style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer' }}>Descend to Base Camp</button>}
+                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, margin: '12px 0' }}>
+                    <div style={{
+                        width: `${progressPercent}%`, height: '100%',
+                        background: showFireworks ? '#64c878' : '#f0c060',
+                        transition: 'width 0.4s ease',
+                    }} />
+                </div>
+                {summitReached && (
+                    <button
+                        onClick={() => window.location.href = '/setup'}
+                        style={{ background: 'transparent', border: '1px solid #f0c060', color: '#f0c060', cursor: 'pointer', padding: '6px 16px', borderRadius: 6 }}
+                    >
+                        Descend to Base Camp
+                    </button>
+                )}
             </div>
 
             {/* Timer */}
             <div style={{ ...glassStyle, top: '50%', left: 24, transform: 'translateY(-50%)', padding: '24px' }}>
-                <div style={{ fontSize: 42, fontWeight: 800 }}>{isFinished ? 'DONE' : formatTime(timeLeft)}</div>
+                <div style={{ fontSize: 42, fontWeight: 800 }}>
+                    {summitReached ? 'DONE' : formatTime(timeLeft)}
+                </div>
             </div>
 
             {/* Tasks */}
             <div style={{ ...glassStyle, top: '50%', right: 24, transform: 'translateY(-50%)', width: 280, padding: '20px' }}>
                 {tasks.map(task => (
-                    <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1 }}>
-                        <input type="checkbox" checked={task.completed} onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} />
+                    <div key={task.id} style={{ display: 'flex', gap: 10, opacity: task.completed ? 0.4 : 1, marginBottom: 8 }}>
+                        <input
+                            type="checkbox"
+                            checked={task.completed}
+                            onChange={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))}
+                        />
                         <span style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>{task.text}</span>
                     </div>
                 ))}
@@ -121,15 +182,24 @@ export default function Home({ session, onSignOut, goalName, totalHours, startTa
 
             {/* Bottom Controls */}
             <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 12 }}>
-                {!isFinished && (
+                {!summitReached && (
                     <button
-                        onClick={() => setIsPaused(!isPaused)} // This now updates App.tsx state!
-                        style={{ padding: '8px 22px', borderRadius: 8, background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)', color: '#fff', cursor: 'pointer' }}
+                        onClick={() => setIsPaused(!isPaused)}
+                        style={{
+                            padding: '8px 22px', borderRadius: 8,
+                            background: !isPaused ? 'rgba(255,255,255,0.1)' : 'rgba(100,200,120,0.7)',
+                            color: '#fff', cursor: 'pointer', border: 'none',
+                        }}
                     >
                         {!isPaused ? '⏸ Pause' : '▶ Resume'}
                     </button>
                 )}
-                <button onClick={onSignOut} style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.5)', color: '#fff', cursor: 'pointer' }}>Sign Out</button>
+                <button
+                    onClick={onSignOut}
+                    style={{ padding: '8px 22px', borderRadius: 8, background: 'rgba(200,60,60,0.5)', color: '#fff', cursor: 'pointer', border: 'none' }}
+                >
+                    Sign Out
+                </button>
             </div>
         </div>
     );

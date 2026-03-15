@@ -8,6 +8,14 @@
  * GLB mountain clones have castShadow/receiveShadow DISABLED to prevent
  * the harsh self-shadowing texture banding seen when shadows are on.
  * Only the ground plane and avatar receive/cast shadows.
+ *
+ * PEAK LOGIC:
+ *   When allTasksDone becomes true, the very next section to recycle
+ *   is swapped out for peak.glb instead of the normal mountain.glb.
+ *   After the avatar walks PEAK_STOP_AFTER_HALF_REV revolutions on the
+ *   peak, onSummitReached() fires — the parent stops climbing and shows
+ *   fireworks. All position / rotation tuning for the peak lives in
+ *   constants.ts (PEAK_ROTATION_Y, PEAK_OFFSET_X, PEAK_OFFSET_Z).
  */
 
 import { useRef, useState, useMemo } from 'react'
@@ -33,8 +41,19 @@ import {
   CAM_FOV_START,
   CAM_INTRO_SEC,
   CAM_LOOK_START,
+  CAM_POS_SUMMIT,
+  CAM_LOOK_SUMMIT,
+  CAM_FOV_SUMMIT,
+  CAM_SUMMIT_TRANSITION_SEC,
   TIME_DAWN_START, TIME_DAY_START, TIME_DUSK_START, TIME_NIGHT_START,
   DIRLIGHT_INTENSITY_DAY, DIRLIGHT_INTENSITY_DUSK, DIRLIGHT_INTENSITY_NIGHT,
+  // ── Peak constants — tune these in constants.ts ──────────────────
+  PEAK_GLB_PATH,
+  PEAK_SCALE,
+  PEAK_ROTATION_Y,
+  PEAK_OFFSET_X,
+  PEAK_OFFSET_Z,
+  PEAK_STOP_AFTER_HALF_REV,
 } from './constants'
 import { Avatar } from './Avatar'
 import { CloudBank } from './CloudBank'
@@ -42,13 +61,9 @@ import { GroundPlane } from './GroundPlane'
 import { CelestialBodies } from './SkyScene'
 
 // ── Sun light constants ───────────────────────────────────────────
-// The sun directional light orbits at this radius around world origin.
-// Its XZ position is the OPPOSITE of the sun disc's position in the sky,
-// so shadows fall away from the sun.
-const SUN_LIGHT_RADIUS = 60   // world-units
-const SUN_LIGHT_Y      = 80   // fixed height
+const SUN_LIGHT_RADIUS = 60
+const SUN_LIGHT_Y      = 80
 
-// How far above the avatar the cloud starts fading the ground out.
 const GROUND_FADE_START_Y =  8
 const GROUND_FADE_END_Y   = -2
 
@@ -215,12 +230,18 @@ function BackgroundTrees() {
 const POOL = 5
 
 interface MountainWorldProps {
-  isClimbing?: boolean
+  isClimbing?:      boolean
+  allTasksDone?:    boolean      // when true, next recycled section becomes the peak
+  onSummitReached?: () => void   // fires once after PEAK_STOP_AFTER_HALF_REV revolutions on peak
 }
 
-export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
+export function MountainWorld({
+  isClimbing     = true,
+  allTasksDone   = false,
+  onSummitReached,
+}: MountainWorldProps) {
 
-  // ── GLB clones — castShadow/receiveShadow OFF to prevent texture banding ──
+  // ── Normal GLB clones ─────────────────────────────────────────────
   const { scene } = useGLTF(GLB_PATH)
   const clones = useMemo(() => {
     return Array.from({ length: POOL }, () => {
@@ -228,9 +249,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       clone.traverse((child) => {
         const mesh = child as THREE.Mesh
         if (mesh.isMesh) {
-          // Shadows disabled on the mountain GLB — they cause harsh
-          // self-shadow banding on the low-poly geometry. The avatar
-          // and ground plane still cast/receive shadows correctly.
           mesh.castShadow    = false
           mesh.receiveShadow = false
         }
@@ -239,12 +257,29 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     })
   }, [scene])
 
-  // ── Sun directional light ref — owned here so we can update from totalRot ──
+  // ── Peak GLB clone ────────────────────────────────────────────────
+  // peak.glb contains both halves of the summit mountain in one file.
+  // Its position / rotation is controlled entirely by PEAK_* in constants.ts.
+  const { scene: peakScene } = useGLTF(PEAK_GLB_PATH)
+  const peakClone = useMemo(() => {
+    const clone = peakScene.clone(true)
+    clone.traverse((child) => {
+      const mesh = child as THREE.Mesh
+      if (mesh.isMesh) {
+        mesh.castShadow    = false
+        mesh.receiveShadow = false
+      }
+    })
+    return clone
+  }, [peakScene])
+
+  // ── Sun directional light ref ─────────────────────────────────────
   const sunLightRef = useRef<THREE.DirectionalLight>(null)
 
   const _camPosLerp  = new THREE.Vector3()
   const _camLookLerp = new THREE.Vector3()
-  const camProgressRef = useRef(0)
+  const camProgressRef        = useRef(0)  // 0→1: intro pan (start → climb)
+  const summitCamProgressRef  = useRef(0)  // 0→1: summit pan (climb → summit shot)
 
   const worldRef       = useRef<THREE.Group>(null)
   const bgMountainsRef = useRef<THREE.Group>(null)
@@ -283,6 +318,18 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
   const [secIndices,           setSecIndices]           = useState<[number,number,number,number,number]>([0,1,2,3,4])
   const [bgMountainGeneration, setBgMountainGeneration] = useState(0)
   const [groundGone,           setGroundGone]           = useState(false)
+
+  // ── Peak / summit state ───────────────────────────────────────────
+  // peakSpawnedRef  : set to true the moment the peak section is injected
+  // peakSlotRef     : which pool slot (0–4) was replaced with peak.glb
+  // peakRotAtSpawn  : totalRot.current captured at injection time
+  // summitFiredRef  : guards onSummitReached() so it fires exactly once
+  // hasPeak         : React state that triggers a re-render to swap the primitive
+  const peakSpawnedRef   = useRef(false)
+  const peakSlotRef      = useRef(-1)
+  const peakRotAtSpawn   = useRef(0)
+  const summitFiredRef   = useRef(false)
+  const [hasPeak, setHasPeak] = useState(false)
 
   const handleCloudPassThrough = () => {
     mountainSpawnScrollY.current = totalScrollY.current
@@ -339,10 +386,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
     }
 
     // ── Sun directional light — position tracks world rotation ────
-    // The sun disc in CelestialBodies is at angle = sharedRotY on the
-    // far side of the scene. We place the light at the OPPOSITE XZ angle
-    // so that shadows fall away from the sun regardless of how far the
-    // avatar has rotated around the mountain.
     if (sunLightRef.current) {
       const hour = wrapHour(localHour())
       const isDawn  = hour >= TIME_DAWN_START  && hour < TIME_DAY_START
@@ -364,8 +407,7 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       sunLightRef.current.intensity =
         dayW * DIRLIGHT_INTENSITY_DAY + duskW * DIRLIGHT_INTENSITY_DUSK + nightW * DIRLIGHT_INTENSITY_NIGHT
 
-      // Rotate opposite to sharedRotY so it always shines FROM the sun's side
-      const lightAngle = sharedRotY + Math.PI   // opposite side of the world
+      const lightAngle = sharedRotY + Math.PI
       sunLightRef.current.position.set(
         Math.cos(lightAngle) * SUN_LIGHT_RADIUS,
         SUN_LIGHT_Y,
@@ -373,19 +415,57 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       )
     }
 
-    // Section recycling
+    // ── Section recycling ─────────────────────────────────────────
+    // Once the peak has spawned it is the final element on the path.
+    // All recycling stops permanently — no normal sections or additional
+    // peaks will ever appear after it.
     const bot = cursor.current
-    if (secY.current[bot] < RECYCLE_THRESHOLD) {
+    if (!peakSpawnedRef.current && secY.current[bot] < RECYCLE_THRESHOLD) {
       const top = (cursor.current + POOL - 1) % POOL
       secY.current[bot]   = secY.current[top] + SECTION_HEIGHT
       secIdx.current[bot] = secIdx.current[bot] + POOL
       cursor.current      = (cursor.current + 1) % POOL
       spawnCountRef.current += 1
+
+      // ── Peak injection ──────────────────────────────────────────
+      // When all tasks are completed commandeer this slot for peak.glb.
+      // After this point the outer guard (!peakSpawnedRef.current) means
+      // this entire block will never run again.
+      if (allTasksDone) {
+        peakSpawnedRef.current = true
+        peakSlotRef.current    = bot
+        peakRotAtSpawn.current = totalRot.current
+
+        // Sink every other slot far below the world so nothing pokes out
+        // above or alongside the peak. Recycling is already stopped by the
+        // outer !peakSpawnedRef.current guard, so these never come back.
+        for (let s = 0; s < POOL; s++) {
+          if (s !== bot) secY.current[s] = RECYCLE_THRESHOLD * 10
+        }
+
+        setHasPeak(true)
+      }
+
       setSecIndices([...secIdx.current] as [number,number,number,number,number])
+
       if (spawnCountRef.current - lastCloudSpawn.current >= CLOUD_SPAWN_INTERVAL) {
         lastCloudSpawn.current = spawnCountRef.current
         cloudY.current = Math.max(...secY.current) + CLOUD_ABOVE_OFFSET
       }
+    }
+
+    // ── Summit detection ──────────────────────────────────────────
+    // Once the peak is in the world, measure how far totalRot has
+    // advanced. When it exceeds PEAK_STOP_AFTER_HALF_REV full
+    // revolutions (× 2π), fire onSummitReached() exactly once.
+    // The parent then sets isClimbing = false, stopping the avatar.
+    if (
+      peakSpawnedRef.current &&
+      !summitFiredRef.current &&
+      totalRot.current - peakRotAtSpawn.current >= Math.PI * 2 * PEAK_STOP_AFTER_HALF_REV
+    ) {
+      summitFiredRef.current = true
+      onSummitReached?.()
     }
 
     if (worldRef.current) {
@@ -393,20 +473,38 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
       worldRef.current.rotation.y = sharedRotY
     }
 
-    // ── Camera zoom pan ──────────────────────────────────────────
+    // ── Camera pan ───────────────────────────────────────────────
+    // Phase 1 — intro pan: start position → climbing position.
+    //   Driven by isClimbing. Reverses when paused (returns to wide shot).
+    // Phase 2 — summit pan: climbing position → summit cinematic shot.
+    //   Starts when summitFiredRef is true. Never reverses.
     if (isClimbing) {
       camProgressRef.current = Math.min(1, camProgressRef.current + delta / CAM_INTRO_SEC)
-    } else {
+    } else if (!summitFiredRef.current) {
+      // Only reverse intro pan when paused before summit; keep it at 1 once summit fires
       camProgressRef.current = Math.max(0, camProgressRef.current - delta / CAM_INTRO_SEC)
     }
-    const p = camProgressRef.current
-    const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
-    _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, t)
-    _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, t)
-    camera.position.copy(_camPosLerp)
-    camera.lookAt(_camLookLerp)
+
+    if (summitFiredRef.current) {
+      summitCamProgressRef.current = Math.min(1, summitCamProgressRef.current + delta / CAM_SUMMIT_TRANSITION_SEC)
+    }
+
+    // Easing helpers
+    const easeInOut = (x: number) => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
+
+    const introT  = easeInOut(camProgressRef.current)
+    const summitT = easeInOut(summitCamProgressRef.current)
+
+    // Phase 1 base position (start → climbing)
+    const basePos  = _camPosLerp.lerpVectors(CAM_POS_START, CAM_POS, introT).clone()
+    const baseLook = _camLookLerp.lerpVectors(CAM_LOOK_START, CAM_LOOK, introT).clone()
+    const baseFov  = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * introT
+
+    // Phase 2 overlay — lerp from the phase-1 result toward the summit shot
+    camera.position.lerpVectors(basePos, CAM_POS_SUMMIT, summitT)
+    camera.lookAt(new THREE.Vector3().lerpVectors(baseLook, CAM_LOOK_SUMMIT, summitT))
     const cam = camera as THREE.PerspectiveCamera
-    const targetFov = CAM_FOV_START + (CAM_FOV - CAM_FOV_START) * t
+    const targetFov = baseFov + (CAM_FOV_SUMMIT - baseFov) * summitT
     if (cam.fov !== targetFov) { cam.fov = targetFov; cam.updateProjectionMatrix() }
   })
 
@@ -419,12 +517,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
   return (
     <>
-      {/*
-        Sun directional light — owned here so it can read totalRot.
-        castShadow ON, but only affects the ground plane and avatar
-        since GLB meshes have castShadow/receiveShadow = false.
-        Position is updated each frame to orbit opposite to the sun disc.
-      */}
       <directionalLight
         ref={sunLightRef}
         color="#fff8e8"
@@ -445,7 +537,6 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
       {!groundGone && <GroundPlane ref={groundRef} />}
 
-      {/* Mountains + celestial bodies share bgMountainsRef rotation */}
       <group ref={bgMountainsRef}>
         <BackgroundMountains key={bgMountainGeneration} generation={bgMountainGeneration} />
         <CelestialBodies />
@@ -457,9 +548,29 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 
       <group ref={worldRef}>
         {([ref0, ref1, ref2, ref3, ref4] as const).map((ref, i) => {
+
+          // ── Peak slot — uses peak.glb with its own tuning constants ──
+          // PEAK_ROTATION_Y, PEAK_OFFSET_X, PEAK_OFFSET_Z are your manual
+          // alignment knobs. Edit them in constants.ts until the path connects.
+          if (hasPeak && i === peakSlotRef.current) {
+            return (
+              <group key={i} ref={ref}>
+                <primitive
+                  object={peakClone}
+                  position={[PEAK_OFFSET_X,-3.5, PEAK_OFFSET_Z]}  // ← (0.5)
+                  rotation={[0, PEAK_ROTATION_Y, 0]}             // ← PEAK_ROTATION_Y
+                  scale={PEAK_SCALE}                             // ← PEAK_SCALE
+                />
+              </group>
+            )
+          }
+
+          // ── Normal mountain slot ──────────────────────────────────
+          // Hide all normal slots the moment the peak spawns — double-guards
+          // against any geometry poking into view alongside the peak.
           const { rotY, offX } = getSectionTransform(secIndices[i])
           return (
-            <group key={i} ref={ref}>
+            <group key={i} ref={ref} visible={!hasPeak}>
               <primitive
                 object={clones[i]}
                 position={[offX, 0, SECTION_OFFSET_Z]}
@@ -476,3 +587,4 @@ export function MountainWorld({ isClimbing = true }: MountainWorldProps) {
 }
 
 useGLTF.preload(GLB_PATH)
+useGLTF.preload(PEAK_GLB_PATH)

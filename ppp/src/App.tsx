@@ -18,14 +18,35 @@ function App() {
     const [mountainGoal, setMountainGoal] = useState<{ name: string; hours: number } | null>(null);
     const [initialTasks, setInitialTasks] = useState<string[] | null>(null);
 
-    // Lifted State: Controls both the timer and the 3D world scroll
+    // Controls both the timer and the 3D world scroll
     const [isPaused, setIsPaused] = useState(false);
+
+    // True once every subtask checkbox is ticked — tells MountainWorld to
+    // inject peak.glb on the next section recycle instead of mountain.glb.
+    // Derived from initialTasks length; the actual per-task completion state
+    // lives inside <Home>, so we pass a callback down to read it back up.
+    const [allTasksDone, setAllTasksDone] = useState(false);
+
+    // True once MountainWorld fires onSummitReached — the avatar has walked
+    // PEAK_STOP_AFTER_HALF_REV revolutions on the peak. At that point we
+    // pause climbing (stopping the avatar) so the fireworks can play.
+    const [summitReached, setSummitReached] = useState(false);
+
+    const handleSummitReached = () => {
+        setSummitReached(true);
+        setIsPaused(true);
+    };
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
-            if (!session) { setMountainGoal(null); setInitialTasks(null); }
+            if (!session) {
+                setMountainGoal(null);
+                setInitialTasks(null);
+                setAllTasksDone(false);
+                setSummitReached(false);
+            }
         });
         return () => subscription.unsubscribe();
     }, []);
@@ -52,9 +73,10 @@ function App() {
                 <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
                     <MountainScene
                         height={window.innerHeight}
-                        // Stop climbing if we are NOT in home view OR if the user paused
                         isClimbing={isInHomeView && !isPaused}
                         viewMode={isInHomeView ? 'close' : 'wide'}
+                        allTasksDone={allTasksDone}
+                        onSummitReached={handleSummitReached}
                     />
                 </div>
 
@@ -66,7 +88,7 @@ function App() {
 
                         <Route path="/setup" element={
                             session ? (
-                                mountainGoal ? <Navigate to="/milestones" replace /> : <GoalSetup onComplete={(n, h) => setMountainGoal({name: n, hours: h})} />
+                                mountainGoal ? <Navigate to="/milestones" replace /> : <GoalSetup onComplete={(n, h) => setMountainGoal({ name: n, hours: h })} />
                             ) : <Navigate to="/" replace />
                         } />
 
@@ -87,6 +109,8 @@ function App() {
                                     startTasks={initialTasks}
                                     isPaused={isPaused}
                                     setIsPaused={setIsPaused}
+                                    onAllTasksDone={() => setAllTasksDone(true)}
+                                    summitReached={summitReached}
                                 />
                             ) : <Navigate to="/" replace />
                         } />
