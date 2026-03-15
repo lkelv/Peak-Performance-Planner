@@ -25,27 +25,6 @@ export const CAM_LOOK_START = new THREE.Vector3(12, 2.5, 0)
 export const CAM_INTRO_SEC = 2.2                               // seconds to complete the pan
 
 // ─────────────────────────────────────────────────────────────────
-// SUMMIT CAMERA
-// Activates when onSummitReached() fires — the avatar has stopped at
-// the peak. The camera slowly lerps from the climbing position to this
-// cinematic wide shot that frames the whole summit and flag.
-//
-// HOW TO TUNE:
-//   CAM_POS_SUMMIT  — where the camera sits. Pull Z out to zoom out,
-//                     raise Y to look down more, lower Y for a heroic
-//                     low-angle shot.
-//   CAM_LOOK_SUMMIT — the point the camera looks AT. Should be slightly
-//                     above the flag/summit tip for a dramatic upward gaze.
-//   CAM_FOV_SUMMIT  — wider FOV (e.g. 35–45) shows more of the scene;
-//                     narrower (e.g. 15) compresses depth for a telephoto feel.
-//   CAM_SUMMIT_TRANSITION_SEC — seconds to lerp into the summit shot.
-// ─────────────────────────────────────────────────────────────────
-export const CAM_POS_SUMMIT             = new THREE.Vector3(-8, 6, 18)  // ← TUNE: side-angle, slightly elevated
-export const CAM_LOOK_SUMMIT            = new THREE.Vector3(6, 5, -2)   // ← TUNE: looks up toward flag/tip
-export const CAM_FOV_SUMMIT             = 28                             // ← TUNE: slightly wider than climbing FOV
-export const CAM_SUMMIT_TRANSITION_SEC  = 3.0                            // ← TUNE: seconds to complete the pan
-
-// ─────────────────────────────────────────────────────────────────
 // AVATAR
 // ─────────────────────────────────────────────────────────────────
 export const AVATAR_POS:   [number, number, number] = [6.7, 1.724, 3.3]
@@ -80,28 +59,6 @@ export const RECYCLE_THRESHOLD:  number = -SECTION_HEIGHT * 2.4
 export const SECTION_OFFSET_X:   number = 0
 export const SECTION_OFFSET_Z:   number = 0.0
 export const SECTION_ROTATION_Y: number = -10
-
-// ─────────────────────────────────────────────────────────────────
-// PEAK (SUMMIT) SECTION
-// Spawns instead of a normal mountain section when all subtasks are done.
-//
-// HOW TO ALIGN THE PEAK WITH THE CURRENT PATH:
-//   1. Start with PEAK_ROTATION_Y = SECTION_ROTATION_Y (same as normal sections)
-//   2. The normal sections alternate between SECTION_ROTATION_Y and
-//      SECTION_ROTATION_Y + Math.PI — check which rotation the slot that
-//      gets replaced had, and match it with PEAK_ROTATION_Y.
-//   3. Fine-tune PEAK_OFFSET_X and PEAK_OFFSET_Z if the path still drifts.
-//   4. PEAK_SCALE only needs changing if peak.glb was exported at a
-//      different unit size than mountain.glb.
-//   5. PEAK_STOP_AFTER_HALF_REV controls how far the avatar walks before
-//      halting: 0.5 = half revolution, 1.0 = full revolution, etc.
-// ─────────────────────────────────────────────────────────────────
-export const PEAK_GLB_PATH:              string = '/peak.glb'
-export const PEAK_SCALE:                 number = 1              // ← tune if peak.glb is a different size
-export const PEAK_ROTATION_Y:            number = -SECTION_ROTATION_Y   // (2)
-export const PEAK_OFFSET_X:              number = SECTION_OFFSET_X     // ← TUNE THIS second
-export const PEAK_OFFSET_Z:              number = SECTION_OFFSET_Z     // ← TUNE THIS third
-export const PEAK_STOP_AFTER_HALF_REV:   number = 0.96       // (1.5)
 
 // ─────────────────────────────────────────────────────────────────
 // CLOUD BANK
@@ -240,3 +197,74 @@ export type FloorState = {
   key:    number
   localY: number
 }
+
+// ─────────────────────────────────────────────────────────────────
+// MILESTONE FLAGS
+// ─────────────────────────────────────────────────────────────────
+export type AvatarState = 'WALKING' | 'SPRINTING' | 'CELEBRATING' | 'IDLE'
+
+export interface Milestone {
+  id: string
+  name: string
+  taskIndex: number
+  progressTarget: number   // 0–1 (position along total climb)
+  isRendered: boolean
+  isReached: boolean
+}
+
+// Sprint speed multiplier when user clicks "Done" early
+export const SPRINT_SPEED_MULT = 10
+// Duration of the sprint in seconds (the "2 laps" fast-forward)
+export const SPRINT_DURATION   = 2.0
+// Duration of celebration before camera pulls back
+export const CELEBRATE_DURATION = 1.5
+
+// Camera pull-back position (zoomed out orbital view for flag reveal)
+export const CAM_FLAG_POS  = new THREE.Vector3(18, 6, 18)
+export const CAM_FLAG_LOOK = new THREE.Vector3(6.7, 3, 3.3)
+export const CAM_FLAG_FOV  = 28
+
+// Flag dimensions
+export const FLAG_POLE_HEIGHT  = 1.4
+export const FLAG_POLE_RADIUS  = 0.035
+export const FLAG_CLOTH_WIDTH  = 0.55
+export const FLAG_CLOTH_HEIGHT = 0.32
+
+// How many seconds before timer expiry to start showing the flag (Scenario B)
+export const FLAG_ANTICIPATION_SECONDS = 10
+
+// ─────────────────────────────────────────────────────────────────
+// SUMMIT CAMERA
+// Activates when onSummitReached() fires — the avatar has stopped at
+// the peak. The camera slowly lerps from the climbing position to this
+// cinematic wide shot that frames the whole summit.
+//
+// HOW TO TUNE:
+//   CAM_POS_SUMMIT  — where the camera sits.
+//   CAM_LOOK_SUMMIT — the point the camera looks AT.
+//   CAM_FOV_SUMMIT  — wider FOV shows more scene; narrower compresses depth.
+//   CAM_SUMMIT_TRANSITION_SEC — seconds to lerp into the summit shot.
+// ─────────────────────────────────────────────────────────────────
+export const CAM_POS_SUMMIT             = new THREE.Vector3(-8, 6, 18)
+export const CAM_LOOK_SUMMIT            = new THREE.Vector3(6, 5, -2)
+export const CAM_FOV_SUMMIT             = 28
+export const CAM_SUMMIT_TRANSITION_SEC  = 3.0
+
+// ─────────────────────────────────────────────────────────────────
+// PEAK (SUMMIT) SECTION
+// Spawns instead of a normal mountain section when all subtasks are done.
+//
+// HOW TO ALIGN THE PEAK WITH THE CURRENT PATH:
+//   1. Start with PEAK_ROTATION_Y = SECTION_ROTATION_Y
+//   2. Normal sections alternate between SECTION_ROTATION_Y and
+//      SECTION_ROTATION_Y + Math.PI — match the replaced slot.
+//   3. Fine-tune PEAK_OFFSET_X / PEAK_OFFSET_Z if path drifts.
+//   4. PEAK_SCALE only if peak.glb is a different unit size.
+//   5. PEAK_STOP_AFTER_HALF_REV = how far avatar walks before halting.
+// ─────────────────────────────────────────────────────────────────
+export const PEAK_GLB_PATH:              string = '/peak.glb'
+export const PEAK_SCALE:                 number = 1
+export const PEAK_ROTATION_Y:            number = -SECTION_ROTATION_Y
+export const PEAK_OFFSET_X:              number = SECTION_OFFSET_X
+export const PEAK_OFFSET_Z:              number = SECTION_OFFSET_Z
+export const PEAK_STOP_AFTER_HALF_REV:   number = 0.96
