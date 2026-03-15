@@ -135,8 +135,3 @@ The timer helps maintain focus while working through milestones.
 
 # Authors
 Made by Kelvin, Yeeheng, Tom, Eric, Jonathan and Jacky
-
-- React Router
-- GLTF model loading
-
----
